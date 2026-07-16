@@ -1,0 +1,24 @@
+# TrustAnchor Engine 2 Service — Python dependencies
+#
+# opencv-python-headless (not opencv-python) is used deliberately: this is a
+# server-side service with no display/GUI requirement, and the headless
+# build avoids pulling in X11/Qt system dependencies that add nothing here.
+opencv-python-headless==4.13.0.92
+pytesseract==0.3.13
+pillow==12.1.1
+numpy==2.4.4
+
+# API layer (used starting Step 3's orchestration integration; harmless to
+# have installed now since app/main.py is not yet wired to real routes).
+fastapi==0.139.0
+uvicorn==0.51.0
+python-multipart==0.0.32
+pydantic==2.13.4
+
+# Test fixture generation only (tests/generate_test_document.py) — pure
+# Python QR generation, replaces a prior Linux-only `qrencode` subprocess
+# call. Not used by the shipped pipeline itself.
+qrcode==7.4.2
+
+# Testing
+pytest==9.1.1

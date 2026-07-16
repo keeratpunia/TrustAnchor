@@ -1,0 +1,57 @@
+{
+  "name": "@trustanchor/backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TrustAnchor Engine 1 Verification Server. Storage and serving ONLY — this server holds no signing key of any kind, in any environment, at any time (Frozen Spec §5). It stores raw credential payloads, raw asset bytes, and the current offline-signed Trust Manifest, and serves them to verifiers over four public APIs.",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "migrate": "prisma migrate deploy",
+    "migrate:dev": "prisma migrate dev",
+    "generate": "prisma generate",
+    "seed": "ts-node prisma/seed.ts",
+    "test": "jest --runInBand",
+    "test:unit": "jest --runInBand tests/unit",
+    "test:integration": "jest --runInBand tests/integration",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.14.0",
+    "@trustanchor/shared": "^1.0.0",
+    "archiver": "^8.0.0",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^1.4.5-lts.1",
+    "pdfkit": "^0.19.1",
+    "qrcode": "^1.5.4",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/archiver": "^8.0.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.12",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^1.4.11",
+    "@types/node": "^20.12.7",
+    "@types/pdfkit": "^0.17.6",
+    "@types/qrcode": "^1.5.6",
+    "@types/supertest": "^6.0.2",
+    "jest": "^29.7.0",
+    "prisma": "^5.14.0",
+    "supertest": "^6.3.4",
+    "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.4.5"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  }
+}

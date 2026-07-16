@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "generated_at": "2026-07-08T00:00:00Z",
+  "valid_until": "2026-07-15T00:00:00Z",
+  "issuers": [
+    {
+      "issuer_id": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
+      "issuer_name": "XYZ University",
+      "status": "active",
+      "keys": [
+        {
+          "public_key": "2d80e657a3be98306666453ba3fcda51dc350fc80d18033366ba68067fd4e1be",
+          "valid_from": "2025-01-01T00:00:00Z",
+          "valid_until": null
+        }
+      ]
+    }
+  ],
+  "revoked_docs": []
+}

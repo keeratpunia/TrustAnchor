@@ -1,0 +1,300 @@
+openapi: 3.0.3
+info:
+  title: TrustAnchor Engine 1 — Verification Server API
+  version: 1.0.0
+  description: |
+    This server is storage and serving ONLY (Frozen Architecture Specification §5).
+    It holds no signing key of any kind, in any environment, at any time. Every
+    signature that matters was produced offline by @trustanchor/offline-signer;
+    this server simply stores and serves the resulting data.
+
+    Read GET /revocation's description carefully before using it — it is a
+    convenience, unsigned, derived view and is NOT part of the actual
+    cryptographic verification algorithm (which reads revocation status
+    directly from the already-fetched, already-signature-verified GET
+    /manifest response).
+
+servers:
+  - url: http://localhost:4000
+    description: Local development
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Server is running.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string }
+                  timestamp: { type: string, format: date-time }
+
+  /manifest:
+    get:
+      summary: Fetch the current signed Trust Manifest
+      description: |
+        Returns the current Trust Manifest, verbatim, exactly as it was
+        uploaded during the last offline signing ceremony. No authentication
+        required — this object is public and self-authenticating; the
+        caller verifies `signature` against a hardcoded platform public key
+        before trusting anything inside `payload` (Frozen Spec §14, steps 2–4).
+      responses:
+        '200':
+          description: The current signed manifest.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignedManifest' }
+        '404':
+          description: No manifest has been published yet.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    post:
+      summary: Ingest a freshly offline-signed manifest (administrative)
+      description: |
+        Accepts the `{ payload, signature }` object produced by
+        `offline-signer sign-manifest` and stores it as the new current
+        manifest. This endpoint's access control (a shared ingestion secret)
+        is ordinary operational hygiene, NOT a cryptographic security
+        boundary — see Frozen Spec §21 and src/middleware/ingestionAuth.ts.
+      security:
+        - ingestionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignedManifest' }
+      responses:
+        '201':
+          description: Manifest ingested successfully.
+        '400':
+          description: Malformed manifest, or signature failed the server-side sanity check.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Missing or invalid ingestion credentials.
+        '409':
+          description: The provided version is not strictly greater than the currently stored version.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /credential/{docId}:
+    get:
+      summary: Fetch a credential's raw payload by document ID
+      description: |
+        Returns the raw, unsigned credential payload. The caller MUST
+        recompute its canonical-CBOR SHA-256 hash and compare it against the
+        `h` field embedded in the QR code scanned from the physical document
+        before trusting anything in this response (Frozen Spec §14, step 6).
+        This server does not attach a signature to this response.
+      parameters:
+        - name: docId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The credential payload.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CredentialPayload' }
+        '400':
+          description: docId is not a well-formed UUID.
+        '404':
+          description: No credential found for this doc_id.
+    post:
+      summary: Ingest a newly-signed credential (administrative)
+      description: |
+        Expects the exact output shape of `offline-signer sign-credential`.
+        Only `payload` is stored — no signature is stored server-side
+        (Frozen Spec §7). `contentHashHex`/`signatureHex`, if provided, are
+        used purely for an optional pre-storage sanity check against the
+        issuer's key in the current manifest.
+      security:
+        - ingestionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payload: { $ref: '#/components/schemas/CredentialPayload' }
+                contentHashHex: { type: string }
+                signatureHex: { type: string }
+      responses:
+        '201':
+          description: Credential ingested successfully.
+        '400':
+          description: Malformed payload, hash mismatch, or signature failed sanity check.
+
+  /asset/{contentHash}:
+    get:
+      summary: Fetch a raw asset by its SHA-256 content hash
+      description: |
+        NOT called by Engine 1 (Frozen Spec §13) — reserved for a future
+        Engine 2 (out of scope for this implementation) to download a
+        trustworthy reference image for visual comparison.
+      parameters:
+        - name: contentHash
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[0-9a-f]{64}$' }
+      responses:
+        '200':
+          description: Raw asset bytes.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '400':
+          description: contentHash is not a well-formed 64-character hex SHA-256 digest.
+        '404':
+          description: No asset found for this content hash.
+    post:
+      summary: Ingest a raw asset file (administrative)
+      security:
+        - ingestionAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+                docId: { type: string, format: uuid }
+                assetName: { type: string, example: student_photo }
+                expectedContentHash: { type: string, pattern: '^[0-9a-f]{64}$' }
+      responses:
+        '201':
+          description: Asset ingested successfully.
+        '400':
+          description: Uploaded bytes' hash does not match expectedContentHash.
+
+  /revocation:
+    get:
+      summary: Convenience, UNSIGNED, derived view of manifest revocation data
+      description: |
+        **CRITICAL:** this is NOT a separate signed artifact and is NOT part
+        of Engine 1's actual verification algorithm. Per the Frozen Spec §9,
+        revocation lives inside the one signed Trust Manifest
+        (`payload.revoked_docs`); introducing a second independently-signed
+        revocation object would reintroduce a cross-artifact consistency
+        problem the frozen design deliberately eliminated.
+
+        This endpoint exists only because it is part of the required API
+        surface for this implementation. It is useful for a quick,
+        human-readable revocation check (e.g. a support dashboard) but MUST
+        NOT be treated as an authoritative trust decision. The real
+        verification algorithm checks `manifest.revoked_docs` directly from
+        the already-fetched, already-signature-verified GET /manifest
+        response — see verifier-app/src/engine1/engine1.ts, which never
+        calls this endpoint.
+      responses:
+        '200':
+          description: Current revocation data, derived from the signed manifest.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  _note: { type: string }
+                  manifest_version: { type: integer }
+                  generated_at: { type: string, format: date-time }
+                  valid_until: { type: string, format: date-time }
+                  revoked_docs:
+                    type: array
+                    items: { type: string, format: uuid }
+                  issuer_statuses:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        issuer_id: { type: string, format: uuid }
+                        issuer_name: { type: string }
+                        status: { type: string, enum: [active, suspended] }
+        '404':
+          description: No manifest has been published yet.
+
+components:
+  securitySchemes:
+    ingestionAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Ordinary operational access control (Frozen Spec §21), NOT a
+        cryptographic security boundary. See src/middleware/ingestionAuth.ts.
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error: { type: string }
+        code: { type: string }
+
+    IssuerKeyEntry:
+      type: object
+      required: [public_key, valid_from, valid_until]
+      properties:
+        public_key: { type: string, pattern: '^[0-9a-f]{64}$' }
+        valid_from: { type: string, format: date-time }
+        valid_until: { type: string, format: date-time, nullable: true }
+
+    ManifestIssuerEntry:
+      type: object
+      required: [issuer_id, issuer_name, status, keys]
+      properties:
+        issuer_id: { type: string, format: uuid }
+        issuer_name: { type: string }
+        status: { type: string, enum: [active, suspended] }
+        keys:
+          type: array
+          items: { $ref: '#/components/schemas/IssuerKeyEntry' }
+
+    ManifestPayload:
+      type: object
+      required: [version, generated_at, valid_until, issuers, revoked_docs]
+      properties:
+        version: { type: integer, minimum: 1 }
+        generated_at: { type: string, format: date-time }
+        valid_until: { type: string, format: date-time }
+        issuers:
+          type: array
+          items: { $ref: '#/components/schemas/ManifestIssuerEntry' }
+        revoked_docs:
+          type: array
+          items: { type: string, format: uuid }
+
+    SignedManifest:
+      type: object
+      required: [payload, signature]
+      properties:
+        payload: { $ref: '#/components/schemas/ManifestPayload' }
+        signature: { type: string, pattern: '^[0-9a-f]{128}$' }
+
+    CredentialPayload:
+      type: object
+      required:
+        [v, issuer_id, doc_id, template_id, template_version, issued_at, expires_at, fields, asset_hashes, template_hash]
+      properties:
+        v: { type: integer, enum: [1] }
+        issuer_id: { type: string, format: uuid }
+        doc_id: { type: string, format: uuid }
+        template_id: { type: string, format: uuid }
+        template_version: { type: integer, minimum: 1 }
+        issued_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time, nullable: true }
+        fields:
+          type: object
+          additionalProperties: { type: string }
+        asset_hashes:
+          type: object
+          additionalProperties: { type: string, pattern: '^[0-9a-f]{64}$' }
+        template_hash: { type: string, pattern: '^[0-9a-f]{64}$' }

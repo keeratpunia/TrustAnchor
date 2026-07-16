@@ -1,0 +1,23 @@
+{
+  "payload": {
+    "version": 2,
+    "generated_at": "2026-07-15T08:50:43.873Z",
+    "valid_until": "2026-07-20T08:50:43.873Z",
+    "issuers": [
+      {
+        "issuer_id": "f26f54da-fdfc-4f34-982e-877687121bdd",
+        "issuer_name": "ABC University",
+        "status": "active",
+        "keys": [
+          {
+            "public_key": "b382bd52bdd6752b55d33594b0fd802887f15958d450458414472ab34ddb37a1",
+            "valid_from": "2025-01-01T00:00:00Z",
+            "valid_until": null
+          }
+        ]
+      }
+    ],
+    "revoked_docs": []
+  },
+  "signature": "e4b4cb8fd02f96944656fec2fae5d39d6017c5d6424219d08db909ab7a20d38fd84cdbb4bd84066e324f265d1b9dc3115a1c01fd54b90caafda2abbb4b968a0f"
+}

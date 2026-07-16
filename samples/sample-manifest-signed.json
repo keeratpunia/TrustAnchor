@@ -1,0 +1,23 @@
+{
+  "payload": {
+    "version": 1,
+    "generated_at": "2026-07-08T00:00:00Z",
+    "valid_until": "2026-07-15T00:00:00Z",
+    "issuers": [
+      {
+        "issuer_id": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
+        "issuer_name": "XYZ University",
+        "status": "active",
+        "keys": [
+          {
+            "public_key": "2d80e657a3be98306666453ba3fcda51dc350fc80d18033366ba68067fd4e1be",
+            "valid_from": "2025-01-01T00:00:00Z",
+            "valid_until": null
+          }
+        ]
+      }
+    ],
+    "revoked_docs": []
+  },
+  "signature": "d3d0649a511e4d6d6cb478bc5f0c62856b55cfc8c353bbaf0c28d3739652f8fd81f1b10a1aa5775c64c25a5e6b5f3a5b273b7af6daaefb3b82c20c71d8d1890f"
+}

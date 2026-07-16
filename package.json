@@ -1,0 +1,26 @@
+{
+  "name": "trustanchor-engine1",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TrustAnchor Engine 1 — deterministic cryptographic credential verification. Implements the frozen Engine 1 specification: Ed25519 signatures, SHA-256 hashing, canonical CBOR encoding, offline signing, and a runtime that holds no signing keys.",
+  "workspaces": [
+    "packages/shared",
+    "packages/offline-signer",
+    "packages/backend"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=packages/shared && npm run build --workspace=packages/offline-signer && npm run build --workspace=packages/backend",
+    "test": "npm run test --workspace=packages/shared && npm run test --workspace=packages/backend",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "backend:dev": "npm run dev --workspace=packages/backend",
+    "backend:migrate": "npm run migrate --workspace=packages/backend",
+    "backend:seed": "npm run seed --workspace=packages/backend",
+    "signer:keygen": "npm run keygen --workspace=packages/offline-signer",
+    "demo:setup": "node scripts/setup-demo.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "UNLICENSED"
+}

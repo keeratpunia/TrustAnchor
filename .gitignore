@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment files (NEVER commit real secrets)
+.env
+.env.local
+!.env.example
+
+# Offline key material — these must NEVER be committed to a real repository.
+# The sample keys under samples/ are clearly-labeled DEMO-ONLY keys with no
+# security value; real deployments must generate their own and keep them
+# strictly offline.
+*.key.json
+keys/*.private.json
+
+# Prisma
+packages/backend/prisma/dev.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Expo
+packages/verifier-app/.expo/
+packages/verifier-app/node_modules/
+packages/verifier-app/dist/
+packages/verifier-app/web-build/
+
+# Test coverage
+coverage/

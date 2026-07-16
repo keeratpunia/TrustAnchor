@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "TrustAnchor Verifier",
+    "slug": "trustanchor-verifier",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "backgroundColor": "#0a1120"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "TrustAnchor needs camera access to scan a document's QR code and, optionally, to photograph the document itself for a deeper forensic verification check."
+      }
+    },
+    "android": {
+      "package": "com.trustanchor.verifier",
+      "permissions": ["CAMERA"]
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}

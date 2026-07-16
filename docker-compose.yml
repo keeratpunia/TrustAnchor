@@ -1,0 +1,51 @@
+# TrustAnchor Engine 1 — Docker Compose
+#
+# Brings up PostgreSQL and the backend together. Run:
+#   docker compose up -d postgres    (start just the database, for local dev)
+#   docker compose up --build        (start everything, including the backend)
+#
+# After the database is up for the first time, run migrations and seed data
+# from the host (see README.md):
+#   npm run backend:migrate
+#   npm run backend:seed
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: trustanchor
+    ports:
+      - '5432:5432'
+    volumes:
+      - trustanchor_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: packages/backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: 'postgresql://postgres:postgres@postgres:5432/trustanchor?schema=public'
+      PORT: 4000
+      CORS_ORIGIN: '*'
+      LOG_LEVEL: 'info'
+      NODE_ENV: 'production'
+      # Set these to real values for a real deployment — see .env.example.
+      PLATFORM_PUBLIC_KEY_HEX: ''
+      INGESTION_API_KEY: 'change-me-in-production'
+    ports:
+      - '4000:4000'
+
+volumes:
+  trustanchor_pgdata:

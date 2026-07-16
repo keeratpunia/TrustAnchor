@@ -1,0 +1,503 @@
+// ============================================================================
+// Prisma schema — TrustAnchor Engine 1
+// Exact match to Frozen Architecture Specification §23 ("Database Schema").
+// ============================================================================
+//
+// IMPORTANT, read before modifying this file:
+//
+// No table in this schema stores a private signing key, in any form, at any
+// time. The `documents` table deliberately has NO signature or content_hash
+// column — the only signature that matters for a credential lives in the
+// QR code printed on the physical document, produced once, offline, at
+// issuance (see Frozen Spec §7, "why there is no stored signature alongside
+// this payload"). Storing a duplicate copy server-side would add a piece of
+// data the verifier would still have to independently distrust — so we
+// simply don't store it.
+//
+// The `issuers` table is an ADMINISTRATIVE / DISPLAY CONVENIENCE ONLY. The
+// verifier NEVER trusts issuer status or key material from this table — it
+// only trusts what it reads from the offline-signed Trust Manifest served
+// by GET /manifest. This table exists purely so the Issuer Portal has
+// something to show issuers about their own account.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Raw, unsigned credential data, keyed by doc_id. This is untrusted
+/// storage: the verifier fetches this and independently recomputes its
+/// canonical-CBOR SHA-256 hash, comparing it against the `h` field embedded
+/// in the QR scanned from the physical document (Frozen Spec §14 step 6).
+/// Tampering with any row here is caught by that hash comparison — it is
+/// not caught by any database-level protection, by design.
+model Document {
+  docId            String    @id @map("doc_id")
+  issuerId         String    @map("issuer_id")
+  templateId       String    @map("template_id")
+  templateVersion  Int       @map("template_version")
+
+  /// Stored and served as an OPAQUE STRING, never as a native timestamp
+  /// type. This is deliberate and load-bearing: `issued_at` is hashed as a
+  /// raw text field inside the credential payload (see
+  /// payloadCodec.ts / Frozen Spec §7), so its exact byte representation —
+  /// whether or not it includes milliseconds, trailing zero-padding, etc. —
+  /// is part of what the issuer signed. A native DateTime/Date column would
+  /// silently reformat the string on every read (JavaScript's
+  /// `Date.toISOString()` always appends milliseconds, e.g. turning a
+  /// signed "2026-05-20T00:00:00Z" into "2026-05-20T00:00:00.000Z"),
+  /// changing the recomputed hash and causing a genuine, untampered
+  /// credential to fail verification as HASH_MISMATCH. Storing this as
+  /// plain text guarantees the server echoes back byte-for-byte what was
+  /// signed, regardless of what ISO-8601 variant the issuer originally used.
+  issuedAt String @map("issued_at")
+
+  /// Same reasoning as issuedAt above — stored as an opaque string, or
+  /// null, never as a native timestamp type.
+  expiresAt String? @map("expires_at")
+
+  /// JSON object: { fieldName: stringValue, ... } — Frozen Spec §7.
+  /// Every value is a string, even values that look numeric (e.g. CGPA
+  /// "9.37") — see canonicalCbor.ts rule 5 for why floats are forbidden.
+  fields Json
+
+  /// JSON object: { assetName: sha256HexDigest, ... } — Frozen Spec §7, §13.
+  /// Engine 1 does NOT download or hash the actual asset bytes; it only
+  /// verifies these recorded hashes are part of the signed payload.
+  assetHashes Json @map("asset_hashes")
+
+  /// SHA-256 hex digest of the canonical CBOR encoding of the template's
+  /// layout definition, at the version this credential was issued under.
+  templateHash String @map("template_hash")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  assets CredentialAsset[]
+
+  @@index([issuerId])
+  @@map("documents")
+}
+
+/// Raw asset bytes (photo/logo/signature/seal images), addressed by their
+/// own content hash. Untrusted storage, exactly like Document — Engine 1
+/// does not fetch these at all (see Frozen Spec §13); this table and its
+/// serving endpoint exist for the future Engine 2 (explicitly out of scope
+/// for this implementation) to use.
+model CredentialAsset {
+  /// SHA-256 hex digest of `bytes` — the primary key IS the content hash,
+  /// so two documents that happen to embed byte-identical images
+  /// automatically share one storage row.
+  contentHash String @id @map("content_hash")
+  docId       String @map("doc_id")
+  assetName   String @map("asset_name")
+  mimeType    String @map("mime_type")
+  bytes       Bytes
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  document Document @relation(fields: [docId], references: [docId])
+
+  @@index([docId])
+  @@map("credential_assets")
+}
+
+/// Single-row table holding the CURRENT offline-signed Trust Manifest blob,
+/// exactly as received from an offline signing ceremony (Frozen Spec §8,
+/// §9). The server never generates or modifies the contents of
+/// `manifestBlob` — it is uploaded verbatim by an administrator and served
+/// verbatim by GET /manifest. The `id` column is pinned to 1 by a check
+/// constraint (added in the raw SQL migration) to enforce "exactly one
+/// current manifest" at the database level.
+model CurrentManifest {
+  id           Int      @id @default(1)
+  /// The complete { payload, signature } object, stored as opaque JSON.
+  /// The server does not need to understand its internal structure to
+  /// store and serve it — that is precisely the point (Frozen Spec §5).
+  manifestBlob Json     @map("manifest_blob")
+  receivedAt   DateTime @default(now()) @map("received_at")
+
+  @@map("current_manifest")
+}
+
+/// Administrative / display convenience ONLY (Frozen Spec §23). The
+/// verifier app never reads this table — it reads issuer status and key
+/// material exclusively from the signed Trust Manifest. This table exists
+/// so the Issuer Portal's own UI has a place to show "your account status"
+/// without needing to parse the manifest blob for display purposes.
+model Issuer {
+  issuerId   String @id @map("issuer_id")
+  issuerName String @map("issuer_name")
+  /// Mirrors the manifest's issuer status for UI purposes ONLY. This value
+  /// is NOT a security boundary — a compromised runtime could set this to
+  /// anything and it would have zero effect on what the verifier trusts,
+  /// because the verifier reads status from the manifest, not from here.
+  status String @default("active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("issuers")
+}
+
+// ============================================================================
+// ENGINE 2 MODELS — added below the frozen Engine 1 schema line.
+// ============================================================================
+//
+// EVERYTHING ABOVE THIS COMMENT IS FROZEN (Engine 1 Freeze Specification §20).
+// No column, index, or constraint on Document, CredentialAsset,
+// CurrentManifest, or Issuer may be added, removed, or changed here. Engine 2
+// is purely additive: four new tables, zero modifications to existing ones.
+//
+// Engine 2 answers a different question than Engine 1 ("does the physical
+// document match the signed data," not "was it genuinely signed"), and its
+// tables reflect that: they store TEMPLATE-level configuration (shared
+// across every credential issued under a template) rather than per-document
+// cryptographic facts. See Engine2_Architecture.md §6 for the full rationale
+// behind each table below.
+
+/// A university's declared document template — one row per (templateId,
+/// version). Templates are managed by universities WITHOUT writing code
+/// (Engine2_Architecture.md §10) via the new /v2/templates* API surface.
+///
+/// IMPORTANT: `templateHash` here is computed with the SAME canonical-CBOR +
+/// SHA-256 primitives Engine 1 already uses (`@trustanchor/shared`'s
+/// `canonicalCbor`/`hash` modules, imported and reused, never reimplemented —
+/// the one explicit, documented exception to "Engine 2 never touches Engine 1
+/// code," identical in spirit to how `offline-signer` already reuses these
+/// same primitives). This value MUST equal the `template_hash` field inside
+/// any CredentialPayload issued under this template — Engine 1 has always
+/// carried that field, but it was never given meaning until Engine 2 uses it
+/// here to detect a template swap.
+model Template {
+  templateId  String   @map("template_id")
+  version     Int
+  issuerId    String   @map("issuer_id")
+  name        String
+  /// The full layout definition: page dimensions, expected QR position (used
+  /// to seed homography), font/language expectations. Opaque JSON — the
+  /// server does not need to interpret its structure to store it, same
+  /// principle as Engine 1's manifest_blob (schema.prisma's own comment on
+  /// CurrentManifest).
+  layoutJson  Json     @map("layout_json")
+  templateHash String  @map("template_hash")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  /// The reference photo uploaded in Template Studio, stored as the
+  /// template's actual PRINTED BACKGROUND — not just used to measure pixel
+  /// dimensions and let an admin draw boxes on it (which is all it was
+  /// used for before this field existed). Rendering a credential PDF now
+  /// draws this image first, then the OCR zone values / photo / QR on top
+  /// of it — which is what actually reproduces the university name,
+  /// prose, seal, and border a real certificate has, "for free," since
+  /// it's literally the same pixels the issuer already uploaded. Nullable
+  /// because older templates created before this field existed have none.
+  backgroundImageBytes    Bytes?  @map("background_image_bytes")
+  backgroundImageMimeType String? @map("background_image_mime_type")
+
+  assets     TemplateAsset[]
+  ocrZones   OcrZone[]
+  photoZones PhotoZone[]
+
+  @@id([templateId, version])
+  @@index([issuerId])
+  @@map("templates")
+}
+
+/// A static reference asset (logo, seal, signature) declared by a template —
+/// shared across every credential issued under it. Distinct from Engine 1's
+/// `credential_assets` table, which holds PER-CREDENTIAL assets (e.g. one
+/// specific student's photo) — that table and its GET /asset/:contentHash
+/// endpoint were reserved, unused, by Engine 1 specifically for Engine 2 to
+/// consume (Engine2_Architecture.md §3); `template_assets` is the companion
+/// TEMPLATE-level table for assets that don't vary per credential.
+model TemplateAsset {
+  id              String   @id @default(uuid())
+  templateId      String   @map("template_id")
+  templateVersion Int      @map("template_version")
+  /// e.g. "university_logo", "registrar_signature", "official_seal".
+  assetName       String   @map("asset_name")
+  /// Expected region on the page, in template coordinate space —
+  /// { x, y, width, height } — used both to crop the aligned captured photo
+  /// for comparison and to draw the verifier app's visual overlay.
+  boundingBox     Json     @map("bounding_box")
+  /// SHA-256 of `bytes`. Content-addressed, same pattern as
+  /// credential_assets.content_hash.
+  contentHash     String   @map("content_hash")
+  mimeType        String   @map("mime_type")
+  bytes           Bytes
+  /// If false, a low confidence score for this asset contributes to
+  /// NEEDS_REVIEW but never independently forces REJECTED (Engine2_Architecture.md §10.4).
+  isMandatory     Boolean  @default(true) @map("is_mandatory")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  template Template @relation(fields: [templateId, templateVersion], references: [templateId, version])
+
+  @@index([templateId, templateVersion])
+  @@map("template_assets")
+}
+
+/// A declared OCR zone: where a specific credential FIELD is expected to
+/// appear on the page, in which language(s), and whether it's mandatory.
+/// `fieldName` must match a key inside the corresponding credential's
+/// (Engine-1-authenticated) `CredentialPayload.fields` map — Engine 2 OCRs
+/// this region and compares the result against that already-trusted value,
+/// never against a fresh, unverified re-fetch.
+model OcrZone {
+  id              String   @id @default(uuid())
+  templateId      String   @map("template_id")
+  templateVersion Int      @map("template_version")
+  fieldName       String   @map("field_name")
+  boundingBox     Json     @map("bounding_box")
+  /// ISO 639-1 codes this zone's text may appear in, e.g. ["en"],
+  /// ["hi","pa"], or ["en","hi","pa"] for a mixed-language field. The OCR
+  /// stage runs once per declared language (and once with all of them
+  /// combined, for genuinely mixed-script text within a single zone) and
+  /// keeps the highest-confidence read (Engine2_Architecture.md §8.3).
+  languages       String[] @map("languages")
+  isMandatory     Boolean  @default(true) @map("is_mandatory")
+
+  template Template @relation(fields: [templateId, templateVersion], references: [templateId, version])
+
+  @@index([templateId, templateVersion])
+  @@map("ocr_zones")
+}
+
+/// Declares where on the page a PER-DOCUMENT dynamic image goes — e.g. a
+/// student's own photo. Deliberately a SEPARATE model from both OcrZone
+/// (which is for TEXT read via OCR and compared via Stage 6 — a photo has
+/// no text and nothing to OCR) and TemplateAsset (which is a single STATIC
+/// reference shared by every document under a template, like a university
+/// logo — a student photo is different for every single document).
+///
+/// STUDENT PHOTO VERIFICATION IS OUT OF SCOPE, DELIBERATELY: this model
+/// only records WHERE to place the image when rendering a credential's
+/// PDF (see services/pdfRender.ts). It does not attempt to verify that the
+/// pictured person matches anyone — that's a face-recognition problem,
+/// fundamentally different from the fixed-reference-image comparison
+/// asset_verification.py already does for logos/signatures (see that
+/// module's own header for why a per-template static reference doesn't
+/// generalize to a per-document dynamic one). Nothing reads or compares
+/// bytes stored against a PhotoZone; they are stored (as an ordinary
+/// CredentialAsset, content-hash-addressed exactly like a logo) and placed
+/// on the page, nothing more.
+model PhotoZone {
+  id              String  @id @default(uuid())
+  templateId      String  @map("template_id")
+  templateVersion Int     @map("template_version")
+  /// e.g. "student_photo" — matches the CredentialPayload.asset_hashes key.
+  fieldName       String  @map("field_name")
+  boundingBox     Json    @map("bounding_box")
+  isMandatory     Boolean @default(true) @map("is_mandatory")
+
+  /// Which ALREADY-DECLARED OCR zone's fieldName (e.g. "roll_no") a batch
+  /// issuance uses to find this student's photo file — the issuer's photo
+  /// files must be named exactly "<value of that field>.jpg/.png/etc",
+  /// matched per-row automatically. Deliberately NOT the student's name:
+  /// two students can share a name (or initials), but a roll number/
+  /// registration ID is designed to be unique — see lib/csv.ts's header
+  /// for the full rationale. Nullable only for rows created before this
+  /// field existed; the Template Studio wizard always sets it going forward.
+  matchByField String? @map("match_by_field")
+
+  template Template @relation(fields: [templateId, templateVersion], references: [templateId, version])
+
+  @@index([templateId, templateVersion])
+  @@map("photo_zones")
+}
+
+/// One Engine 2 verification attempt's full result, kept for audit/history.
+/// `engine1Status` is stored as a SNAPSHOT for the audit record only — it is
+/// never re-trusted or re-derived from; the actual gating check (was Engine 1
+/// really AUTHENTIC for this doc_id) happens once, at request time, in the
+/// route handler, before this row is even created (Engine2_Architecture.md §9).
+model Engine2Verification {
+  id              String   @id @default(uuid())
+  docId           String   @map("doc_id")
+  templateId      String   @map("template_id")
+  templateVersion Int      @map("template_version")
+  engine1Status   String   @map("engine1_status")
+  /// AUTHENTIC | NEEDS_REVIEW | REJECTED — Engine 2's own verdict, before combining with Engine 1.
+  engine2Verdict  String   @map("engine2_verdict")
+  /// VERIFIED | NEEDS_REVIEW | REJECTED — the COMBINED verdict. Can only be
+  /// VERIFIED if engine1Status was AUTHENTIC and engine2Verdict was also
+  /// AUTHENTIC (Engine2_Architecture.md §5, §12) — this invariant is
+  /// enforced in the route handler's code, not just documented here.
+  overallVerdict  String   @map("overall_verdict")
+  /// Full per-stage report: field confidences, asset confidences, alignment
+  /// quality, detected anomalies. Opaque JSON — same "storage doesn't need
+  /// to understand it" principle as Engine 1's manifest_blob.
+  reportJson      Json     @map("report_json")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([docId])
+  @@map("engine2_verifications")
+}
+
+// ============================================================================
+// AUTH & ACCOUNT MODELS — issuer/admin web accounts.
+// ============================================================================
+// Purely additive again; zero changes to any model above (Engine 1 or
+// Engine 2). These tables answer a question neither engine ever needed to
+// ask: "who may log into the web portal, and what may they currently do
+// there." Verification itself still requires no login at all — anyone with
+// the phone app and a physical document can verify (see verifier-app).
+//
+// CRITICAL, load-bearing rule: no column anywhere in this section EVER
+// stores a private signing key. IssuerAccount.publicKeyHex is exactly what
+// its name says — the PUBLIC half, generated by the issuer themselves,
+// offline, ideally on a YubiKey (see offline-signer/src/keySigner.ts). This
+// table is administrative bookkeeping for the portal's own UI, exactly like
+// the existing `Issuer` table above — it is NEVER a source of cryptographic
+// trust. A verifier only ever trusts the signed Trust Manifest (GET
+// /manifest), never anything read from here.
+
+/// A web account for an issuing institution's staff to log into the portal.
+/// Deliberately a SEPARATE concept from the `Issuer` table above: `Issuer`
+/// is the cryptographic identity that appears in the signed manifest;
+/// `IssuerAccount` is "a person who can log in," which may exist before any
+/// cryptographic identity does (see `status`'s PENDING/APPROVED_NO_KEY
+/// states) or, in principle, could be managed by staff turnover without the
+/// underlying `Issuer` identity ever changing.
+model IssuerAccount {
+  id              String   @id @default(uuid())
+  institutionName String   @map("institution_name")
+  email           String   @unique
+  passwordHash    String   @map("password_hash")
+
+  /// PENDING -> APPROVED_NO_KEY -> ACTIVE (-> KEY_ROTATION_PENDING, which
+  /// does not block ACTIVE's capabilities, see key_rotation_requests) ; or
+  /// REJECTED / SUSPENDED at any point after PENDING. See the workflow
+  /// report's §3.1 state diagram for the full picture.
+  status          String   @default("PENDING")
+
+  approvedAt       DateTime? @map("approved_at")
+  rejectionReason  String?   @map("rejection_reason")
+  suspensionReason String?   @map("suspension_reason")
+
+  /// Populated only once keygen completes AND an admin has recorded the
+  /// resulting public key (see POST /admin/issuer-accounts/:id/publish-key).
+  /// This is a link to the real cryptographic identity, never itself a
+  /// source of trust — see this section's header comment.
+  issuerId     String? @unique @map("issuer_id")
+  publicKeyHex String? @map("public_key_hex")
+  /// "yubikey" | "software_test_key" — see offline-signer/src/keySigner.ts's
+  /// header. Tracked loudly, never silently defaulted, so a real deployment
+  /// can never accidentally end up trusting a software-test-key issuer.
+  keySource    String? @map("key_source")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  keyRotationRequests KeyRotationRequest[]
+  revocationRequests  RevocationRequest[]
+
+  @@map("issuer_accounts")
+}
+
+/// A web account for platform staff. Deliberately NOT self-service —
+/// there is no POST /auth/admin/signup anywhere in this system. Admin
+/// accounts are created exactly once, out-of-band, via prisma/seed.ts or a
+/// direct database operation by whoever operates this deployment — the
+/// same "a human already had to trust you before you got this role"
+/// property the old version's design was reaching for, just without a
+/// public signup form undermining it.
+model AdminAccount {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("admin_accounts")
+}
+
+/// An issuer's request to rotate their signing key, and its review state.
+/// Deliberately does NOT let an issuer or this backend generate a new key —
+/// `newPublicKeyHex` is filled in only after the issuer has generated a new
+/// key themselves, offline, exactly like the original keygen ceremony.
+model KeyRotationRequest {
+  id              String   @id @default(uuid())
+  issuerAccountId String   @map("issuer_account_id")
+  reason          String
+
+  /// PENDING | APPROVED | REJECTED
+  status String @default("PENDING")
+
+  newPublicKeyHex String?   @map("new_public_key_hex")
+  newKeySource    String?   @map("new_key_source")
+  reviewNote      String?   @map("review_note")
+  requestedAt     DateTime  @default(now()) @map("requested_at")
+  reviewedAt      DateTime? @map("reviewed_at")
+
+  issuerAccount IssuerAccount @relation(fields: [issuerAccountId], references: [id])
+
+  @@index([issuerAccountId])
+  @@map("key_rotation_requests")
+}
+
+/// An issuer's request to revoke one of their own issued documents, and its
+/// review state. Deliberately does NOT revoke anything by itself — per the
+/// Frozen Architecture Specification §9, revocation only becomes real once
+/// an admin re-signs and republishes the Trust Manifest with this doc_id
+/// added to `revoked_docs` (see routes/admin/revocationRequests.ts's
+/// header). This table is the request/queue, not the revocation itself —
+/// architecturally the same shape as KeyRotationRequest above, for the same
+/// reason: a networked "revoke" button cannot, by itself, produce a new
+/// validly-signed manifest.
+model RevocationRequest {
+  id              String   @id @default(uuid())
+  issuerAccountId String   @map("issuer_account_id")
+  docId           String   @map("doc_id")
+  reason          String
+
+  /// PENDING | APPROVED | REJECTED
+  status String @default("PENDING")
+
+  reviewNote  String?   @map("review_note")
+  requestedAt DateTime  @default(now()) @map("requested_at")
+  reviewedAt  DateTime? @map("reviewed_at")
+
+  issuerAccount IssuerAccount @relation(fields: [issuerAccountId], references: [id])
+
+  @@index([issuerAccountId])
+  @@index([docId])
+  @@map("revocation_requests")
+}
+
+/// Append-only record of every sensitive action (logins, approvals,
+/// rejections, suspensions, key rotations). Never updated or deleted by
+/// application code — write-once, read-many. Not a security boundary
+/// itself (a compromised backend could still write false entries), but a
+/// forensic/operational record for exactly the kind of "who approved this
+/// and when" question a real institution will eventually ask.
+model AuditLogEntry {
+  id        String   @id @default(uuid())
+  eventType String   @map("event_type")
+  /// "ISSUER" | "ADMIN"
+  actorType String   @map("actor_type")
+  actorId   String?  @map("actor_id")
+  payload   Json?
+  ip        String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  /// HASH CHAIN — makes a direct database edit to any historical row
+  /// detectable, without needing to trust the database's own honesty.
+  /// `entryHash` = SHA-256(previousHash + eventType + actorType + actorId +
+  /// JSON(payload) + createdAt.toISOString()) — i.e. this entry's hash
+  /// depends on the PREVIOUS entry's hash, exactly like a blockchain.
+  /// `previousHash` is null only for the very first entry ever written.
+  /// Recomputing the chain from entry 1 onward (services/auditLog.ts's
+  /// `verifyAuditChain`) and finding it matches every stored `entryHash`
+  /// is what proves nothing in between was silently altered — if a row
+  /// were edited directly in the database, every entryHash AFTER it would
+  /// stop matching what recomputation produces, immediately revealing
+  /// both that tampering happened and exactly where the chain broke.
+  previousHash String? @map("previous_hash")
+  entryHash    String  @map("entry_hash")
+
+  @@index([eventType])
+  @@index([actorId])
+  @@map("audit_log")
+}
