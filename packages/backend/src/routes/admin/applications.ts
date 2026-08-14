@@ -41,13 +41,14 @@ adminApplicationsRouter.get(
       orderBy: { createdAt: 'desc' },
     });
     res.json(
-      accounts.map((a: { id: string; institutionName: string; email: string; status: string; issuerId: string | null; publicKeyHex: string | null; keySource: string | null; createdAt: Date; approvedAt: Date | null; rejectionReason: string | null; suspensionReason: string | null }) => ({
+      accounts.map((a: { id: string; institutionName: string; email: string; status: string; issuerId: string | null; publicKeyHex: string | null; pendingPublicKeyHex: string | null; keySource: string | null; createdAt: Date; approvedAt: Date | null; rejectionReason: string | null; suspensionReason: string | null }) => ({
         id: a.id,
         institutionName: a.institutionName,
         email: a.email,
         status: a.status,
         issuerId: a.issuerId,
         publicKeyHex: a.publicKeyHex,
+        pendingPublicKeyHex: a.pendingPublicKeyHex,
         keySource: a.keySource,
         createdAt: a.createdAt,
         approvedAt: a.approvedAt,

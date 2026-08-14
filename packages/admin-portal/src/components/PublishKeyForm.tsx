@@ -15,11 +15,13 @@ export interface PublishKeyFormValue {
 export function PublishKeyForm({
   onSubmit,
   submitLabel,
+  initialPublicKeyHex,
 }: {
   onSubmit: (value: PublishKeyFormValue) => void | Promise<void>;
   submitLabel: string;
+  initialPublicKeyHex?: string;
 }) {
-  const [publicKeyHex, setPublicKeyHex] = useState('');
+  const [publicKeyHex, setPublicKeyHex] = useState(initialPublicKeyHex ?? '');
   const [keySource, setKeySource] = useState<'yubikey' | 'software_test_key'>('yubikey');
   const [submitting, setSubmitting] = useState(false);
 

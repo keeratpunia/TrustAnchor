@@ -4,14 +4,6 @@ import { loadRecentTemplates, forgetTemplate } from '../lib/recentTemplates';
 import { Button, Card, EmptyState } from './ui';
 import { IconPlus, IconTrash, IconChevronRight } from './icons';
 
-/**
- * The "recent templates" list — extracted out of Dashboard.tsx so
- * IssuerDashboard can show it too. This used to only exist on the admin's
- * home page, which meant an issuer who'd just created a template had no
- * "my templates" screen anywhere to land on — Look Up (type a UUID
- * manually) was the only path left. Not acceptable friction; every actor
- * gets this list now.
- */
 export function RecentTemplatesList({ compact = false }: { compact?: boolean }) {
   const [recents, setRecents] = useState(loadRecentTemplates());
 
@@ -23,21 +15,15 @@ export function RecentTemplatesList({ compact = false }: { compact?: boolean }) 
   return (
     <div>
       {!compact && (
-        <>
-          <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--slate-500)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
-            My Templates
-          </h3>
-          <p style={{ fontSize: 12, color: 'var(--slate-500)', marginBottom: 16 }}>
-            Remembered on this device the moment you create or view one — not fetched from the server, since
-            there's no "list every template" endpoint by design.
-          </p>
-        </>
+        <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--slate-500)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 16 }}>
+          My Templates
+        </h3>
       )}
 
       {recents.length === 0 ? (
         <EmptyState
           title="No templates yet"
-          body="Every credential Engine 2 verifies needs a configured template first. Start by creating one — it only takes a few minutes."
+          body="Start by creating a template — it defines the layout and fields for the credentials you'll issue."
           action={
             <Link to="/templates/new" style={{ textDecoration: 'none' }}>
               <Button variant="primary" icon={<IconPlus size={16} />}>

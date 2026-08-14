@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adminLogin } from '../lib/adminApi';
 import { ApiError } from '../lib/api';
-import { Button, Card, Field, Input } from '../components/ui';
+import { Button, Card, Field, Input, PasswordInput } from '../components/ui';
 
 export function AdminLogin({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [email, setEmail] = useState('');
@@ -28,7 +28,7 @@ export function AdminLogin({ onLoggedIn }: { onLoggedIn: () => void }) {
 
   return (
     <div className="page" style={{ maxWidth: 420, marginTop: 80 }}>
-      <div className="page-eyebrow">Engine 2 · Template Studio</div>
+      <div className="page-eyebrow">Template Studio</div>
       <h1 className="page-title">Admin Login</h1>
       <p className="page-subtitle" style={{ marginBottom: 28 }}>
         Sign in with your platform admin account.
@@ -39,7 +39,7 @@ export function AdminLogin({ onLoggedIn }: { onLoggedIn: () => void }) {
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus required />
           </Field>
           <Field label="Password">
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} required />
           </Field>
           {error && <div className="field-error" style={{ marginBottom: 14 }}>{error}</div>}
           <Button variant="primary" type="submit" disabled={loading}>

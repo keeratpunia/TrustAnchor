@@ -57,7 +57,7 @@ export function AdminKeyRotation() {
 
   return (
     <div className="page">
-      <div className="page-eyebrow">Engine 2 · Template Studio</div>
+      <div className="page-eyebrow">Template Studio</div>
       <h1 className="page-title">Key Rotation Requests</h1>
       <p className="page-subtitle" style={{ marginBottom: 24 }}>
         An issuer requesting rotation has already confirmed their password and generated a new key offline —

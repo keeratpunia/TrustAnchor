@@ -75,7 +75,14 @@ export default function CaptureScreen({ docId, engine1Result, onVerified, onCanc
     if (!cameraRef.current || capturing) return;
     setCapturing(true);
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.85 });
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.92,
+        // Request a smaller image size closer to what the preview shows —
+        // the full sensor resolution (4032×3024) is overkill for OCR and
+        // makes the document a tiny portion of the total image. A 1920px
+        // wide capture keeps the document large relative to the frame.
+        imageType: 'jpg',
+      });
       if (!photo?.uri) {
         throw new Error('Camera returned no image.');
       }

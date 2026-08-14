@@ -1,4 +1,5 @@
 /**
+ * D:\JUNE2026TESTING\packages\admin-portal\src\lib\issuerApi.ts
  * issuerApi.ts — client for /auth/issuer/* (packages/backend's
  * routes/auth/issuerAuth.ts). Zero new backend endpoints.
  */

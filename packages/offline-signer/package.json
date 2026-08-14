@@ -2,15 +2,27 @@
   "name": "@trustanchor/offline-signer",
   "version": "1.0.0",
   "private": true,
-  "description": "Offline signing CLI for TrustAnchor Engine 1. This tool is designed to be run on an air-gapped machine — it never makes a network call and never talks to the backend directly. It generates Ed25519 keypairs, signs credential payloads, signs trust manifests, and renders printable QR codes. Its output files are then manually transferred (e.g. via USB) to the networked Issuer Portal / Verification Server for storage and serving. See README.md for the full offline signing ceremony.",
+  "description": "Offline signing CLI + standalone signer app for TrustAnchor Engine 1.",
   "main": "dist/cli.js",
+  "bin": {
+    "trustanchor-signer": "dist/sign-gui.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "keygen": "ts-node src/cli.ts keygen",
     "sign-credential": "ts-node src/cli.ts sign-credential",
     "sign-manifest": "ts-node src/cli.ts sign-manifest",
     "generate-qr": "ts-node src/cli.ts generate-qr",
-    "clean": "rm -rf dist"
+
+    "build:signer": "npm run build && npm run package:win",
+    "build:signer:all": "npm run build && npm run package:win & npm run package:mac & npm run package:linux",
+
+    "package:win": "npx @yao-pkg/pkg dist/sign-gui.js -t latest-win-x64 -o build/TrustAnchor-Signer.exe",
+    "package:mac": "npx @yao-pkg/pkg dist/sign-gui.js -t latest-macos-x64 -o build/TrustAnchor-Signer-mac",
+    "package:mac-arm": "npx @yao-pkg/pkg dist/sign-gui.js -t latest-macos-arm64 -o build/TrustAnchor-Signer-mac-arm",
+    "package:linux": "npx @yao-pkg/pkg dist/sign-gui.js -t latest-linux-x64 -o build/TrustAnchor-Signer-linux",
+
+    "clean": "rm -rf dist build"
   },
   "dependencies": {
     "@trustanchor/shared": "^1.0.0",
@@ -24,6 +36,12 @@
     "ts-node": "^10.9.2",
     "@types/node": "^20.12.7",
     "@types/qrcode": "^1.5.5",
-    "@types/uuid": "^9.0.8"
+    "@types/uuid": "^9.0.8",
+    "@yao-pkg/pkg": "^6.0.0"
+  },
+  "pkg": {
+    "scripts": ["dist/**/*.js"],
+    "assets": [],
+    "outputPath": "build"
   }
 }

@@ -1,18 +1,5 @@
 /**
  * api.ts — thin client for packages/backend/src/routes/v2/templates.ts.
- * ============================================================================
- * Zero new backend endpoints exist for this app. Every function here maps
- * to exactly one already-existing route; this file adds no server-side
- * behavior, only a typed, ergonomic way to call what's already there.
- *
- * AUTH NOTE: these endpoints are protected by templatesAuth.ts's
- * requireTemplateWriteAuth, which accepts EITHER an ACTIVE issuer's own
- * session OR an admin's — so this file must check for BOTH, preferring
- * the issuer session when both happen to be present (mirroring the
- * backend's own preference order exactly). A previous version of this
- * file only ever checked the admin session, which meant every one of
- * these calls silently sent no Authorization header at all when made by a
- * logged-in issuer — not a config problem, a real bug, now fixed.
  */
 import { loadSettings } from './settings';
 import { loadAdminSession, loadIssuerSession } from './auth';
@@ -46,8 +33,7 @@ export async function parseJsonOrThrow(res: Response): Promise<any> {
   try {
     body = await res.json();
   } catch {
-    // A non-JSON body (e.g. a proxy's plain-text 502 page) still needs to
-    // produce a useful error below, not a raw parse-failure crash.
+    // A non-JSON body still needs to produce a useful error.
   }
   if (!res.ok) {
     throw new ApiError(res.status, body?.code ?? 'UNKNOWN_ERROR', body?.error ?? body?.message ?? `Request failed with HTTP ${res.status}.`);
@@ -55,14 +41,13 @@ export async function parseJsonOrThrow(res: Response): Promise<any> {
   return body;
 }
 
-/** POST /v2/templates — create or update a template's core layout. */
+/** POST /v2/templates */
 export async function createTemplate(params: {
   templateId: string;
   version: number;
   issuerId: string;
   name: string;
   layoutJson: TemplateLayout;
-  /** The uploaded reference photo, stored as the template's actual printed background (see backend's schema.prisma comment on Template.backgroundImageBytes). Optional for backward compatibility. */
   backgroundImage?: Blob;
 }): Promise<{ templateId: string; version: number; templateHash: string }> {
   const form = new FormData();
@@ -76,13 +61,13 @@ export async function createTemplate(params: {
   }
   const res = await fetch(`${baseUrl()}/v2/templates`, {
     method: 'POST',
-    headers: authHeaders(), // no Content-Type — fetch sets the multipart boundary itself
+    headers: authHeaders(),
     body: form,
   });
   return parseJsonOrThrow(res);
 }
 
-/** POST /v2/templates/:templateId/:version/ocr-zones — declare one OCR zone. */
+/** POST /v2/templates/:templateId/:version/ocr-zones */
 export async function declareOcrZone(
   templateId: string,
   version: number,
@@ -96,11 +81,7 @@ export async function declareOcrZone(
   return parseJsonOrThrow(res);
 }
 
-/**
- * POST /v2/templates/:templateId/:version/photo-zones — declares where a
- * PER-DOCUMENT dynamic image (e.g. a student's own photo) goes. See
- * lib/types.ts's PhotoZoneDraft for why this is separate from OCR zones.
- */
+/** POST /v2/templates/:templateId/:version/photo-zones */
 export async function declarePhotoZone(
   templateId: string,
   version: number,
@@ -114,7 +95,7 @@ export async function declarePhotoZone(
   return parseJsonOrThrow(res);
 }
 
-/** POST /v2/templates/:templateId/:version/assets — upload one reference asset. */
+/** POST /v2/templates/:templateId/:version/assets */
 export async function uploadAsset(
   templateId: string,
   version: number,
@@ -125,7 +106,6 @@ export async function uploadAsset(
   form.append('assetName', params.assetName);
   form.append('boundingBox', JSON.stringify(params.boundingBox));
   form.append('isMandatory', String(params.isMandatory));
-
   const res = await fetch(`${baseUrl()}/v2/templates/${templateId}/${version}/assets`, {
     method: 'POST',
     headers: authHeaders(),
@@ -134,13 +114,31 @@ export async function uploadAsset(
   return parseJsonOrThrow(res);
 }
 
-/** GET /v2/templates/:templateId/:version — fetch a template's full configuration. */
+/** GET /v2/templates/:templateId/:version */
 export async function getTemplate(templateId: string, version: number): Promise<TemplateDetail> {
   const res = await fetch(`${baseUrl()}/v2/templates/${templateId}/${version}`);
   return parseJsonOrThrow(res);
 }
 
-/** GET /health — used by the connection check in Settings. */
+/**
+ * GET /v2/templates/my — lists all templates belonging to the currently
+ * logged-in issuer. Used by the template picker on the batch/single
+ * issuance page so issuers never need to know or type a UUID.
+ */
+export interface TemplateSummary {
+  templateId: string;
+  version: number;
+  name: string;
+  templateHash: string;
+  hasBackgroundImage: boolean;
+  ocrZoneCount: number;
+}
+export async function listMyTemplates(): Promise<TemplateSummary[]> {
+  const res = await fetch(`${baseUrl()}/v2/templates/my`, { headers: authHeaders() });
+  return parseJsonOrThrow(res);
+}
+
+/** GET /health */
 export async function checkBackendHealth(): Promise<boolean> {
   try {
     const res = await fetch(`${baseUrl()}/health`);

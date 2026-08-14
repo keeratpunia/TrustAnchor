@@ -32,6 +32,8 @@ from typing import Optional
 import cv2
 import numpy as np
 
+from app.pipeline.qr_detection import detect_qr_corners
+
 
 @dataclass
 class HomographyResult:
@@ -69,29 +71,44 @@ class HomographyError(Exception):
     """Raised when even Tier 1 (QR-seeded) alignment cannot be computed at all."""
 
 
-def _detect_qr_corners(bgr_image: np.ndarray) -> Optional[np.ndarray]:
-    """
-    Detects a QR code's four corner points in the image using OpenCV's
-    built-in QRCodeDetector. Returns a (4, 2) float32 array of corners in
-    (top-left, top-right, bottom-right, bottom-left) order as OpenCV
-    reports them, or None if no QR is found.
 
-    Note: this function only needs the QR's PHYSICAL POSITION on the page
-    for geometric alignment — it does not decode or care about the QR's
-    CONTENT. Content decoding/cryptographic verification is Engine 1's
-    frozen responsibility (packages/verifier-app/src/engine1/qrCodec.ts) and
-    is never duplicated here.
+
+def _is_sane_homography(matrix: np.ndarray, img_shape: tuple, template_w: int, template_h: int) -> bool:
     """
-    detector = cv2.QRCodeDetector()
-    ok, points = detector.detect(bgr_image)
-    if not ok or points is None:
-        return None
-    return points.reshape(4, 2).astype(np.float32)
+    Quick sanity check: a correct homography should map the image center
+    to somewhere inside the template bounds (not outside or at negative
+    coordinates), and shouldn't flip or rotate 90°.
+
+    The determinant of the top-left 2x2 sub-matrix is positive for
+    orientation-preserving transforms and negative for reflections /
+    90°-rotations — a reliable early-rejection test.
+    """
+    det = matrix[0, 0] * matrix[1, 1] - matrix[0, 1] * matrix[1, 0]
+    if det < 0:
+        return False
+
+    # Warp the image center and check it lands inside template bounds.
+    h, w = img_shape[:2]
+    center = np.array([[[w / 2, h / 2]]], dtype=np.float32)
+    warped = cv2.perspectiveTransform(center, matrix)[0][0]
+    margin = 0.3  # allow 30% overshoot
+    if (warped[0] < -margin * template_w or warped[0] > (1 + margin) * template_w or
+            warped[1] < -margin * template_h or warped[1] > (1 + margin) * template_h):
+        return False
+
+    return True
+
+
+def _rotate_corners(corners: np.ndarray, k: int) -> np.ndarray:
+    """Cyclically rotate the 4 corner assignments by k positions."""
+    return np.roll(corners, -k, axis=0)
 
 
 def tier1_qr_seeded_homography(
     captured_bgr: np.ndarray,
     qr_position_in_template: np.ndarray,
+    template_width: int = 0,
+    template_height: int = 0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Tier 1: computes a homography from the QR code's four detected corners
@@ -102,20 +119,56 @@ def tier1_qr_seeded_homography(
         template coordinate space, in the SAME (TL, TR, BR, BL) order
         OpenCV's QRCodeDetector reports, taken from the template's declared
         layout (Template.layoutJson's qr_position field).
+    @param template_width: page width (used for homography sanity check).
+    @param template_height: page height (used for homography sanity check).
 
     @return: (homography_matrix, detected_qr_corners_in_captured_photo)
 
     Raises HomographyError if no QR is detectable in the captured photo at
     all — without at least this, no alignment of any kind is possible.
     """
-    detected_corners = _detect_qr_corners(captured_bgr)
+    detected_corners = detect_qr_corners(captured_bgr)
     if detected_corners is None:
         raise HomographyError(
             "No QR code detected in the captured photo — cannot seed even Tier 1 "
             "alignment. Ask the user to recapture with the QR fully visible and in focus."
         )
 
-    matrix, _ = cv2.findHomography(detected_corners, qr_position_in_template.astype(np.float32))
+    # Different QR detectors (OpenCV vs pyzbar) may return corners in
+    # different orderings — OpenCV orders by the QR's internal finder
+    # pattern structure, while pyzbar orders by screen coordinates.  If
+    # the phone was held at an angle, these don't match, producing a
+    # rotated homography.  Fix: try all 4 cyclic rotations of the corner
+    # assignment and pick the one that produces a geometrically sane
+    # homography (orientation-preserving, image center maps inside the
+    # template bounds).
+    template_pts = qr_position_in_template.astype(np.float32)
+    best_matrix = None
+    best_corners = detected_corners
+
+    for k in range(4):
+        rotated = _rotate_corners(detected_corners, k)
+        matrix, _ = cv2.findHomography(rotated, template_pts)
+        if matrix is None:
+            continue
+
+        # If we have template dimensions, do a full sanity check.
+        if template_width > 0 and template_height > 0:
+            if _is_sane_homography(matrix, captured_bgr.shape, template_width, template_height):
+                return matrix, rotated
+            continue
+
+        # Without template dimensions, accept the first valid homography.
+        if best_matrix is None:
+            best_matrix = matrix
+            best_corners = rotated
+
+    if best_matrix is not None:
+        return best_matrix, best_corners
+
+    # If no rotation produced a valid homography, fall back to the
+    # original corners (same behavior as before this fix).
+    matrix, _ = cv2.findHomography(detected_corners, template_pts)
     if matrix is None:
         raise HomographyError(
             "QR corners were detected but OpenCV could not solve a homography from them "
@@ -259,7 +312,10 @@ def align_document(
     """
     tiers_completed: list[str] = []
 
-    matrix, _ = tier1_qr_seeded_homography(captured_bgr, qr_position_in_template)
+    matrix, _ = tier1_qr_seeded_homography(
+        captured_bgr, qr_position_in_template,
+        template_width=template_width, template_height=template_height,
+    )
     tiers_completed.append("tier1_qr_seeded")
 
     tier2_matrix = tier2_border_refined_homography(

@@ -1,4 +1,5 @@
 /**
+ * D:\JUNE2026TESTING\packages\backend\src\services\qr.ts
  * qr.ts — server-side QR generation for batch PDF rendering.
  * ============================================================================
  * WHY THIS DUPLICATES A SLICE OF offline-signer/src/generateQr.ts RATHER

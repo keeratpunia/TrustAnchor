@@ -24,7 +24,11 @@ import { AssetDraft, BoundingBox, OcrZoneDraft, PhotoZoneDraft } from '../lib/ty
 import { useToast } from '../components/Toast';
 import './wizard.css';
 
-const STEP_LABELS = ['Details', 'Reference Photo', 'QR Position', 'OCR Zones', 'Photo Zones', 'Reference Assets', 'Review & Submit'];
+// Photo Zones and Reference Assets steps are commented out — non-textual
+// field verification is out of scope for the current submission. The code
+// is preserved below (search for "OUT_OF_SCOPE") so it can be re-enabled
+// when non-textual verification is brought back in.
+const STEP_LABELS = ['Details', 'Reference Photo', 'QR Position', 'OCR Zones', 'Review & Submit'];
 const ZONE_COLORS = ['#2f7a78', '#3f4c8c', '#9c4f63', '#a8823d', '#5b7a4f', '#6b4c7a'];
 const QR_COLOR = '#a63a34';
 /**
@@ -239,8 +243,12 @@ export function NewTemplateWizard() {
         });
       }
 
+      // OUT_OF_SCOPE: Photo zone and asset declarations are skipped for now.
+      // Non-textual field verification is out of scope for this submission.
+      // Uncomment these blocks when that functionality is brought back.
+      /*
       for (const photoZone of photoZones) {
-        setSubmitProgress(`Declaring photo zone "${photoZone.fieldName}"…`);
+        setSubmitProgress(\`Declaring photo zone "\${photoZone.fieldName}"…\`);
         await declarePhotoZone(templateId, version, {
           fieldName: photoZone.fieldName,
           boundingBox: photoZone.box,
@@ -250,7 +258,7 @@ export function NewTemplateWizard() {
       }
 
       for (const asset of assets) {
-        setSubmitProgress(`Uploading reference asset "${asset.assetName}"…`);
+        setSubmitProgress(\`Uploading reference asset "\${asset.assetName}"…\`);
         await waitForImageReady(cropImgRef.current!);
         const blob = await cropToBlob(cropImgRef.current!, asset.box);
         await uploadAsset(templateId, version, {
@@ -258,9 +266,35 @@ export function NewTemplateWizard() {
           boundingBox: asset.box,
           isMandatory: asset.isMandatory,
           file: blob,
-          fileName: `${asset.assetName}.png`,
+          fileName: \`\${asset.assetName}.png\`,
         });
       }
+      */
+
+      // Automatically upload the FULL reference photo itself as the
+      // reserved "template_skeleton" asset (engine2-service/app/main.py's
+      // SKELETON_ASSET_NAME) — this is the exact image every OCR zone,
+      // asset box, and the QR position were drawn against, so using it
+      // as the Tier 3 / Stage 4 alignment reference pulls a captured
+      // photo's alignment into agreement with the SAME coordinate space
+      // the zones were declared in, correcting drift across the whole
+      // page rather than only near the QR. isMandatory is always false —
+      // it's never scored as a verifiable asset, only consumed as an
+      // alignment reference (see main.py's SKELETON_ASSET_NAME handling).
+      // OUT_OF_SCOPE: template_skeleton asset upload (used for asset alignment)
+      // Uncomment when non-textual verification is back in scope.
+      /*
+      if (imageFile) {
+        setSubmitProgress('Uploading template alignment reference…');
+        await uploadAsset(templateId, version, {
+          assetName: 'template_skeleton',
+          boundingBox: { x: 0, y: 0, width: naturalWidth, height: naturalHeight },
+          isMandatory: false,
+          file: imageFile,
+          fileName: 'template_skeleton.png',
+        });
+      }
+      */
 
       rememberTemplate({ templateId, version, name, templateHash: result.templateHash, createdAt: new Date().toISOString() });
       setSubmitProgress(null);
@@ -498,7 +532,8 @@ export function NewTemplateWizard() {
         </div>
       )}
 
-      {step === 4 && imageUrl && (
+      {/* OUT_OF_SCOPE: Photo Zones step — uncomment when non-textual verification is back in scope */}
+      {false && step === 94 && imageUrl && (
         <div className="wizard-canvas-row">
           <ZoneCanvas
             imageUrl={imageUrl}
@@ -568,7 +603,8 @@ export function NewTemplateWizard() {
         </div>
       )}
 
-      {step === 5 && imageUrl && (
+      {/* OUT_OF_SCOPE: Reference Assets step — uncomment when non-textual verification is back in scope */}
+      {false && step === 95 && imageUrl && (
         <div className="wizard-canvas-row">
           <ZoneCanvas
             imageUrl={imageUrl}
@@ -625,7 +661,7 @@ export function NewTemplateWizard() {
         </div>
       )}
 
-      {step === 6 && (
+      {step === 4 && (
         <Card>
           <div className="summary-block">
             <div className="summary-label">Template</div>
@@ -656,8 +692,9 @@ export function NewTemplateWizard() {
               ))
             )}
           </div>
-          <div className="summary-block">
-            <div className="summary-label">Photo Zones ({photoZones.length})</div>
+          {/* OUT_OF_SCOPE: Photo Zones and Reference Assets review sections */}
+          <div className="summary-block" style={{ opacity: 0.5 }}>
+            <div className="summary-label">Photo Zones (skipped — out of scope)</div>
             {photoZones.length === 0 ? (
               <p style={{ fontSize: 12.5, color: 'var(--slate-500)' }}>None declared.</p>
             ) : (
@@ -669,8 +706,8 @@ export function NewTemplateWizard() {
               ))
             )}
           </div>
-          <div className="summary-block">
-            <div className="summary-label">Reference Assets ({assets.length})</div>
+          <div className="summary-block" style={{ opacity: 0.5 }}>
+            <div className="summary-label">Reference Assets (skipped — out of scope)</div>
             {assets.length === 0 ? (
               <p style={{ fontSize: 12.5, color: 'var(--slate-500)' }}>None uploaded.</p>
             ) : (

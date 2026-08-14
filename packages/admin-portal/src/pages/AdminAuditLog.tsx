@@ -45,7 +45,7 @@ export function AdminAuditLog() {
 
   return (
     <div className="page" style={{ maxWidth: 960 }}>
-      <div className="page-eyebrow">Engine 2 · Template Studio</div>
+      <div className="page-eyebrow"> Template Studio</div>
       <h1 className="page-title">Audit Log</h1>
       <p className="page-subtitle" style={{ marginBottom: 24 }}>
         A read-only, append-only record of every sensitive action — logins, approvals, rejections, suspensions,

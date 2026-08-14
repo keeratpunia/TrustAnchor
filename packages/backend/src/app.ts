@@ -27,6 +27,7 @@ import { adminRevocationRequestsRouter } from './routes/admin/revocationRequests
 import { adminManifestDraftRouter } from './routes/admin/manifestDraft';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
+import { issuerPublicKeyRouter } from './routes/auth/issuerPublicKey';
 
 export function createApp(): Express {
   const app = express();
@@ -61,6 +62,7 @@ export function createApp(): Express {
   app.use(credentialBatchRouter);
   app.use(issuerDocumentsRouter);
 
+  app.use(issuerPublicKeyRouter);
   // Portal auth & admin — purely additive, new paths under /auth/* and
   // /admin/*. No signing key of any kind is reachable from any route in
   // these routers — see routes/auth/issuerAuth.ts's header.

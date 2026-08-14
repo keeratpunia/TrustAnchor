@@ -1,4 +1,5 @@
 /**
+ * D:\JUNE2026TESTING\packages\backend\src\services\assetStorage.ts
  * assetStorage.ts — stores one per-document asset (e.g. a student photo),
  * content-hash-addressed, exactly like the original POST /asset route.
  * ============================================================================

@@ -1,8 +1,8 @@
 {
   "payload": {
-    "version": 2,
-    "generated_at": "2026-07-15T08:50:43.873Z",
-    "valid_until": "2026-07-20T08:50:43.873Z",
+    "version": 3,
+    "generated_at": "2026-07-20T09:37:06.297Z",
+    "valid_until": "2026-08-19T09:37:06.297Z",
     "issuers": [
       {
         "issuer_id": "f26f54da-fdfc-4f34-982e-877687121bdd",
@@ -19,5 +19,5 @@
     ],
     "revoked_docs": []
   },
-  "signature": "e4b4cb8fd02f96944656fec2fae5d39d6017c5d6424219d08db909ab7a20d38fd84cdbb4bd84066e324f265d1b9dc3115a1c01fd54b90caafda2abbb4b968a0f"
+  "signature": "2468c04f5e9a15f226950346ce652326bab60831969f709d908d9126221fef8581f52d5ba2979acb8406f59422ae20e98facd4d68345ea69c7eeaf28135c0705"
 }

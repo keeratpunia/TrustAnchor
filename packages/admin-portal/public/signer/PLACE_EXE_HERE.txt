@@ -1,0 +1,23 @@
+Put your built signer executables in this folder, named exactly:
+
+  TrustAnchor-Signer.exe       (Windows build)
+  TrustAnchor-Signer-mac       (macOS build)
+
+Vite serves anything in /public at the site root automatically, so once
+these files are here, the download links on the Batch Issuance page
+(/signer/TrustAnchor-Signer.exe and /signer/TrustAnchor-Signer-mac) will
+work correctly.
+
+Build them from packages/offline-signer:
+  npm run build:signer        (Windows)
+  npm run package:mac         (Mac)
+
+Then copy from packages/offline-signer/build/ into this folder:
+  cp packages/offline-signer/build/TrustAnchor-Signer.exe packages/admin-portal/public/signer/
+  cp packages/offline-signer/build/TrustAnchor-Signer-mac packages/admin-portal/public/signer/
+
+Delete this .txt file once the real executables are in place (or leave it,
+Vite will just ignore it — it isn't referenced anywhere).
+
+
+

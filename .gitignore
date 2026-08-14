@@ -44,3 +44,6 @@ packages/verifier-app/web-build/
 
 # Test coverage
 coverage/
+
+# Large signer binary (distribute via GitHub Releases instead)
+packages/admin-portal/public/signer/TrustAnchor-Signer.exe

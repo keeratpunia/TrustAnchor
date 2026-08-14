@@ -22,6 +22,7 @@ import logging
 from typing import Dict, List, Optional
 
 import numpy as np
+import cv2
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
@@ -29,7 +30,8 @@ from app.pipeline.preprocessing import preprocess
 from app.pipeline.homography import align_document, HomographyError
 from app.pipeline.ocr import extract_all_zones
 from app.pipeline import template_matching
-from app.pipeline.asset_verification import verify_all_assets
+# OUT_OF_SCOPE: Non-textual field verification (assets: logos, seals, signatures)
+# from app.pipeline.asset_verification import verify_all_assets
 from app.pipeline.comparison import compare_all_fields
 from app.pipeline.confidence import score_and_decide
 
@@ -49,6 +51,20 @@ app = FastAPI(
 )
 
 ASSET_FILE_PREFIX = "asset_bytes__"
+
+# Reserved asset_name: if a template declares an asset with exactly this
+# name, its bytes are used as the Tier 3 / Stage 4 SKELETON REFERENCE
+# IMAGE (see homography.py's tier3_ecc_refinement and
+# template_matching.py's skeleton_correlation) instead of being verified
+# as an ordinary logo/seal/signature asset. This is precisely the storage
+# path template_matching.py's own module docstring already recommends —
+# an ordinary TemplateAsset row, no schema migration required. The
+# natural choice of image to upload under this name is the SAME reference
+# photo Template Studio's ZoneCanvas was used against to draw every zone
+# in the first place — using it as the skeleton means alignment gets
+# pulled into agreement with the EXACT coordinate space the zones were
+# drawn in, correcting drift everywhere on the page, not just near the QR.
+SKELETON_ASSET_NAME = "template_skeleton"
 
 
 # ============================================================================
@@ -268,7 +284,26 @@ async def run_pipeline(
     # File(...)/Form(...) params FastAPI already parsed above).
     form = await request.form()
     asset_files = await _collect_asset_files(form)
-    missing_asset_bytes = [a.asset_name for a in declared_assets if a.asset_name not in asset_files]
+
+    # Pull the reserved skeleton asset out of the regular asset pool before
+    # anything else touches asset_files — it must never be scored as an
+    # ordinary logo/seal/signature in Stage 5 (comparing it against itself
+    # would trivially "match" at ~100% and silently waste a mandatory-veto
+    # slot), and Stage 2/4 need it decoded to grayscale, not raw bytes.
+    skeleton_bytes = asset_files.pop(SKELETON_ASSET_NAME, None)
+    skeleton_gray: Optional[np.ndarray] = None
+    if skeleton_bytes:
+        skeleton_arr = np.frombuffer(skeleton_bytes, dtype=np.uint8)
+        skeleton_bgr = cv2.imdecode(skeleton_arr, cv2.IMREAD_COLOR)
+        if skeleton_bgr is not None:
+            skeleton_gray = cv2.cvtColor(skeleton_bgr, cv2.COLOR_BGR2GRAY)
+            if skeleton_gray.shape[:2] != (template_height, template_width):
+                skeleton_gray = cv2.resize(skeleton_gray, (template_width, template_height))
+
+    missing_asset_bytes = [
+        a.asset_name for a in declared_assets
+        if a.asset_name not in asset_files and a.asset_name != SKELETON_ASSET_NAME
+    ]
 
     photo_bytes = await photo.read()
 
@@ -296,6 +331,7 @@ async def run_pipeline(
             qr_position_arr,
             template_width,
             template_height,
+            template_skeleton_gray=skeleton_gray,
         )
     except HomographyError as exc:
         logger.info("Alignment failed, returning REJECTED: %s", exc)
@@ -326,7 +362,7 @@ async def run_pipeline(
         }
         for z in zones
     ]
-    ocr_results = extract_all_zones(homography.aligned_image, zone_dicts)
+    ocr_results, debug_dir = extract_all_zones(homography.aligned_image, zone_dicts)
 
     ocr_results_out = [
         OcrResultOut(
@@ -339,25 +375,56 @@ async def run_pipeline(
         for r in ocr_results
     ]
 
+    # ── Debug: write side-by-side comparison report ──
+    if debug_dir:
+        report_lines = [
+            "ENGINE 2 DEBUG — OCR vs Authenticated Values",
+            "=" * 60,
+            f"Tiers completed: {homography.tiers_completed}",
+            f"Alignment quality: {homography.alignment_quality}",
+            "",
+        ]
+        for r in ocr_results:
+            auth_val = authenticated_fields_dict.get(r.field_name, "<NOT IN AUTH DATA>")
+            status = "✓ MATCH" if r.extracted_text.strip().lower() == str(auth_val).strip().lower() else "✗ MISMATCH"
+            report_lines.append(f"[{r.field_name}]")
+            report_lines.append(f"  OCR extracted : '{r.extracted_text}'")
+            report_lines.append(f"  Auth (Engine1): '{auth_val}'")
+            report_lines.append(f"  Confidence    : {r.ocr_confidence:.3f}  |  Lang: {r.language_used}")
+            report_lines.append(f"  Status        : {status}")
+            report_lines.append("")
+        report_path = debug_dir / "_comparison_report.txt"
+        report_path.write_text("\n".join(report_lines), encoding="utf-8")
+        logger.info("ENGINE2 DEBUG: comparison report at %s", report_path)
+
     # ---- Stage 4: template matching ----
-    # No skeleton image is wired through yet (see template_matching.py's
-    # module NOTE on where one would eventually come from) — QR-drift is
-    # the only signal available today, which the function handles
-    # gracefully on its own.
-    match_result = template_matching.compute_template_match(homography.aligned_image, qr_position_arr)
+    # Skeleton is now wired through when a template has declared one
+    # (reserved TemplateAsset named "template_skeleton") — Stage 4 uses
+    # both QR-drift AND whole-page skeleton correlation when available,
+    # falling back to QR-drift alone (capped at "review", never a hard
+    # reject) when it isn't.
+    match_result = template_matching.compute_template_match(
+        homography.aligned_image, qr_position_arr, skeleton_gray=skeleton_gray,
+    )
 
     # ---- Stage 5: asset verification ----
-    asset_verify_inputs = [
-        {
-            "asset_name": a.asset_name,
-            "bounding_box": a.bounding_box.model_dump(),
-            "reference_bytes": asset_files[a.asset_name],
-            "is_mandatory": a.is_mandatory,
-        }
-        for a in declared_assets
-        if a.asset_name in asset_files
-    ]
-    asset_results = verify_all_assets(homography.aligned_image, asset_verify_inputs) if asset_verify_inputs else []
+    # OUT_OF_SCOPE: Non-textual field verification (logos, seals, signatures)
+    # is disabled for the current submission. The code in
+    # app/pipeline/asset_verification.py is preserved intact and can be
+    # re-enabled by uncommenting the block below.
+    #
+    # asset_verify_inputs = [
+    #     {
+    #         "asset_name": a.asset_name,
+    #         "bounding_box": a.bounding_box.model_dump(),
+    #         "reference_bytes": asset_files[a.asset_name],
+    #         "is_mandatory": a.is_mandatory,
+    #     }
+    #     for a in declared_assets
+    #     if a.asset_name in asset_files and a.asset_name != SKELETON_ASSET_NAME
+    # ]
+    # asset_results = verify_all_assets(homography.aligned_image, asset_verify_inputs, _debug_dir=debug_dir) if asset_verify_inputs else []
+    asset_results = []  # No asset verification in current scope
 
     asset_verdicts_out = [
         AssetVerdictOut(
@@ -369,6 +436,26 @@ async def run_pipeline(
         )
         for r in asset_results
     ]
+
+    # ── Debug: append asset verdicts to comparison report ──
+    # OUT_OF_SCOPE: skipped since asset verification is disabled
+    if False and debug_dir and asset_results:
+        report_path = debug_dir / "_comparison_report.txt"
+        asset_lines = [
+            "",
+            "ASSET VERIFICATION (Stage 5)",
+            "=" * 60,
+            "",
+        ]
+        for r in asset_results:
+            asset_lines.append(f"[{r.asset_name}]")
+            asset_lines.append(f"  Score     : {r.similarity:.3f}")
+            asset_lines.append(f"  Tier      : {r.tier}")
+            asset_lines.append(f"  Mandatory : {r.is_mandatory}")
+            asset_lines.append(f"  Reason    : {r.reason}")
+            asset_lines.append("")
+        with open(report_path, "a", encoding="utf-8") as f:
+            f.write("\n".join(asset_lines))
 
     # ---- Stage 6: document comparison (real, not a placeholder) ----
     is_mandatory_by_field = {z.field_name: z.is_mandatory for z in zones}

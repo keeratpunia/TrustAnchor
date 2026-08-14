@@ -21,6 +21,11 @@ npx ts-node src/cli.ts sign-manifest \
   --key platform-key.json \
   --out signed-manifest.json
 
+# C:\Users\HP\Downloads\manifest_payload.json
+
+# npx ts-node src/cli.ts sign-manifest --manifest C:\Users\HP\Downloads\manifest_payload.json --key platform-key.json --out signed_manifest.json
+
+
 # Render a signed credential's QR code as a scannable PNG
 npx ts-node src/cli.ts generate-qr \
   --signed signed-credential.json \
@@ -73,3 +78,7 @@ indicate a serious bug if it did.
 ```
 
 See `/samples` at the project root for real, working examples of every file shape above.
+
+
+
+

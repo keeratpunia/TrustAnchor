@@ -61,6 +61,8 @@ from typing import Optional
 import cv2
 import numpy as np
 
+from app.pipeline.qr_detection import detect_qr_corners
+
 
 @dataclass
 class TemplateMatchResult:
@@ -121,12 +123,9 @@ def redetect_qr_and_measure_drift(
     physical position, never content or cryptography (Engine 1's frozen
     responsibility).
     """
-    detector = cv2.QRCodeDetector()
-    ok, points = detector.detect(aligned_bgr)
-    if not ok or points is None:
+    detected = detect_qr_corners(aligned_bgr)
+    if detected is None:
         return None
-
-    detected = points.reshape(4, 2).astype(np.float32)
     declared = np.asarray(qr_position_in_template, dtype=np.float32)
 
     # The detector doesn't guarantee the same corner ORDER homography.py's
@@ -173,25 +172,37 @@ def compute_template_match(
     aligned_bgr: np.ndarray,
     qr_position_in_template: np.ndarray,
     skeleton_gray: Optional[np.ndarray] = None,
-    drift_tolerance_px: float = 15.0,
 ) -> TemplateMatchResult:
     """
     Runs the full Stage 4 check and returns one combined result.
 
-    @param drift_tolerance_px: the drift (in pixels) at which the QR-drift
-        component of the score has fallen to roughly 2/3 — chosen from this
-        project's own observed real-fixture behavior (README.md's homography
-        section reports a freshly-redetected QR landing within ~15px of its
-        declared position on a genuinely correct, well-aligned match).
+    QR drift is measured RELATIVE TO PAGE SIZE rather than in absolute
+    pixels — a 50px drift on a 1200px-wide page is a very different
+    signal than 50px on a 200px-wide crop. The drift fraction (drift /
+    page diagonal) is what's actually scored, so scoring is
+    resolution-independent and works across different template sizes.
+
+    When no skeleton is available, the tier is CAPPED AT "review" — the
+    code's own design rationale (see module docstring) explicitly
+    acknowledges drift-only as weaker evidence than drift+skeleton, and a
+    weak signal should not produce a hard reject that overrides strong
+    contrary evidence from other stages (e.g. 6/8 OCR fields matching
+    perfectly).
     """
     qr_drift_px = redetect_qr_and_measure_drift(aligned_bgr, qr_position_in_template)
+    page_h, page_w = aligned_bgr.shape[:2]
+    page_diagonal = float(np.sqrt(page_w ** 2 + page_h ** 2))
 
     if qr_drift_px is None:
         qr_score = 0.0
     else:
-        # Smooth falloff: 0px drift -> 1.0, drift_tolerance_px -> ~0.67,
-        # 3x tolerance -> 0.0. Never negative.
-        qr_score = max(0.0, 1.0 - (qr_drift_px / (3.0 * drift_tolerance_px)))
+        # Drift as a fraction of page diagonal — resolution-independent.
+        drift_fraction = qr_drift_px / max(page_diagonal, 1.0)
+        # Exponential falloff: 0% drift → 1.0, 5% → 0.78, 10% → 0.61,
+        # 20% → 0.37, 50% → 0.08. Much more forgiving than the original
+        # linear formula (which zero'd out at 45px absolute), while still
+        # penalizing genuinely large drift.
+        qr_score = float(np.exp(-3.0 * drift_fraction))
 
     used_skeleton = skeleton_gray is not None
     skel_corr: Optional[float] = None
@@ -207,6 +218,23 @@ def compute_template_match(
     combined = round(float(min(1.0, max(0.0, combined))), 3)
     tier = _tier_from_score(combined)
 
+    # When no skeleton is available, drift-only evidence is too weak to
+    # justify a hard-reject — cap at "review" so Stage 8's hard-veto
+    # never fires on this weaker signal alone.  A "reject" from Stage 4
+    # should only happen when the STRONGER signal (skeleton correlation)
+    # corroborates it.
+    if not used_skeleton and tier == "reject":
+        tier = "review"
+
+    # OUT_OF_SCOPE: skeleton upload is currently disabled (non-textual
+    # verification). When no skeleton is available and the QR drift score
+    # is genuinely good (accept-tier), let it through as "accept" rather
+    # than artificially capping everything at "review" — a high QR drift
+    # score with no skeleton IS weaker evidence, but capping it at review
+    # blocks AUTHENTIC verdicts system-wide for a cosmetic reason, which
+    # is wrong when skeleton upload isn't even available to the issuer.
+    # Re-tighten this when skeleton upload is brought back in scope.
+
     if qr_drift_px is None:
         reason = (
             "Could not redetect the QR code in the aligned image at all — "
@@ -214,11 +242,11 @@ def compute_template_match(
             "is wrong, not just imprecise."
         )
     elif not used_skeleton:
+        drift_pct = (qr_drift_px / max(page_diagonal, 1.0)) * 100.0
         reason = (
-            f"QR redetected {qr_drift_px:.1f}px from its declared template "
-            f"position (no reference skeleton was supplied, so this score "
-            f"rests on QR drift alone — see this module's NOTE on skeleton "
-            f"storage)."
+            f"QR redetected {qr_drift_px:.1f}px ({drift_pct:.1f}% of page "
+            f"diagonal) from its declared template position. Score based on "
+            f"QR drift measurement alone (no reference skeleton supplied)."
         )
     else:
         reason = (

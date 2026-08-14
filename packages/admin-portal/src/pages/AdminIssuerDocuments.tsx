@@ -46,7 +46,7 @@ export function AdminIssuerDocuments() {
 
   return (
     <div className="page" style={{ maxWidth: 900 }}>
-      <div className="page-eyebrow">Engine 2 · Template Studio</div>
+      <div className="page-eyebrow">Template Studio</div>
       <h1 className="page-title">Issued Documents</h1>
       <p className="page-subtitle" style={{ marginBottom: 24 }}>
         Every credential this issuer has ever ingested through the platform — the platform's own record,

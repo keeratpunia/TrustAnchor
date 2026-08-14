@@ -382,7 +382,9 @@ model IssuerAccount {
   /// This is a link to the real cryptographic identity, never itself a
   /// source of trust — see this section's header comment.
   issuerId     String? @unique @map("issuer_id")
+  pendingPublicKeyHex String? @map("pending_public_key_hex")
   publicKeyHex String? @map("public_key_hex")
+
   /// "yubikey" | "software_test_key" — see offline-signer/src/keySigner.ts's
   /// header. Tracked loudly, never silently defaulted, so a real deployment
   /// can never accidentally end up trusting a software-test-key issuer.

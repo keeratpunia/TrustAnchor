@@ -11,6 +11,14 @@ numpy==2.4.4
 # API layer (used starting Step 3's orchestration integration; harmless to
 # have installed now since app/main.py is not yet wired to real routes).
 fastapi==0.139.0
+
+# QR detection fallback — pyzbar wraps the zbar library and is dramatically
+# more robust than OpenCV's built-in QRCodeDetector on real phone photos
+# (glare, blur, small QR-to-frame ratio). The pipeline works without it
+# (falls back to OpenCV only) but installs are strongly recommended.
+# System dependency: Windows: no extra step (pyzbar bundles zbar.dll).
+#   macOS: brew install zbar.  Linux: apt install libzbar0.
+pyzbar==0.1.9
 uvicorn==0.51.0
 python-multipart==0.0.32
 pydantic==2.13.4

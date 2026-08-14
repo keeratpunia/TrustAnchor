@@ -26,6 +26,7 @@ import { prisma } from '../../db/prisma';
 import { ApiError } from '../../middleware/errorHandler';
 import { asyncHandler } from '../../middleware/asyncHandler';
 import { requireTemplateWriteAuth } from '../../middleware/templatesAuth';
+import { requireIssuerSession } from '../../middleware/issuerSessionAuth';
 import { isNonEmptyString, isUuid } from '../../middleware/validation';
 import { logger } from '../../utils/logger';
 
@@ -171,6 +172,45 @@ templatesRouter.get(
     res.setHeader('Content-Type', template.backgroundImageMimeType || 'image/jpeg');
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.send(Buffer.from(template.backgroundImageBytes));
+  })
+);
+
+
+/**
+ * GET /v2/templates/my
+ * Lists all templates belonging to the currently logged-in issuer.
+ * Used by the admin-portal's template picker so issuers never need to
+ * type a UUID — they just see their templates by name and click one.
+ *
+ * MUST be registered BEFORE GET /v2/templates/:templateId/:version,
+ * otherwise Express matches "my" as a templateId parameter.
+ */
+templatesRouter.get(
+  '/v2/templates/my',
+  requireIssuerSession,
+  asyncHandler(async (req: Request, res: Response) => {
+    const issuerId = req.issuerAccount!.issuerId;
+    if (!issuerId) {
+      res.json([]);
+      return;
+    }
+
+    const templates = await prisma.template.findMany({
+      where: { issuerId },
+      include: { ocrZones: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json(
+      templates.map((t: any) => ({
+        templateId: t.templateId,
+        version: t.version,
+        name: t.name,
+        templateHash: t.templateHash,
+        hasBackgroundImage: !!t.backgroundImageBytes,
+        ocrZoneCount: t.ocrZones?.length ?? 0,
+      }))
+    );
   })
 );
 

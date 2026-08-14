@@ -95,27 +95,21 @@ function AssetRow({ asset }: { asset: AssetVerdict }) {
 export default function Engine2ResultScreen({ result, onScanAgain }: Props) {
   const [showDetails, setShowDetails] = useState(false);
   const meta = OVERALL_META[result.overallVerdict] ?? OVERALL_META.REJECTED;
-  const { confidence, templateMatch } = result;
-  const templateMeta = TIER_META[templateMatch.tier];
+  // confidence scoring section removed from UI
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={{ padding: 20 }}>
       <View style={[styles.verdictBox, { backgroundColor: meta.bg, borderColor: meta.color }]}>
         <Text style={[styles.verdictEmoji, { color: meta.color }]}>{meta.emoji}</Text>
         <Text style={[styles.verdictLabel, { color: meta.color }]}>{meta.label}</Text>
-        <Text style={styles.verdictSubtext}>Deep document check against the issued record</Text>
+        <Text style={styles.verdictSubtext}>
+          {result.fieldVerdicts.length > 0
+            ? `${result.fieldVerdicts.filter(f => f.similarity >= 0.85).length} of ${result.fieldVerdicts.length} field(s) matched`
+            : 'Printed text compared against the issued record'}
+        </Text>
       </View>
 
-      <View style={styles.section}>
-        <View style={styles.confidenceHeader}>
-          <Text style={styles.sectionTitle}>Overall Confidence</Text>
-          <Text style={[styles.confidenceValue, { color: meta.color }]}>
-            {Math.round(confidence.overall_confidence * 100)}%
-          </Text>
-        </View>
-        <ConfidenceBar value={confidence.overall_confidence} color={meta.color} />
-        <Text style={styles.reasonText}>{result.reason}</Text>
-      </View>
+
 
       {result.fieldVerdicts.length > 0 && (
         <View style={styles.section}>
@@ -127,30 +121,13 @@ export default function Engine2ResultScreen({ result, onScanAgain }: Props) {
         </View>
       )}
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Template Match</Text>
-        <View style={styles.verdictRowHeader}>
-          <Text style={[styles.verdictIcon, { color: templateMeta.color }]}>{templateMeta.icon}</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.verdictName}>Document Layout</Text>
-            <ConfidenceBar value={templateMatch.template_match_score} color={templateMeta.color} />
-          </View>
-          <Text style={[styles.verdictPct, { color: templateMeta.color }]}>
-            {Math.round(templateMatch.template_match_score * 100)}%
-          </Text>
-        </View>
-        <Text style={styles.verdictReason}>{templateMatch.reason}</Text>
-      </View>
+      {/* OUT_OF_SCOPE: Template layout comparison is disabled — its weight
+          is zeroed in confidence scoring, so showing it would confuse
+          verifiers with a score that doesn't affect the verdict. */}
 
-      {result.assetVerdicts.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Reference Marks</Text>
-          <Text style={styles.sectionSubtitle}>Logos, seals, and signatures compared to the template's records</Text>
-          {result.assetVerdicts.map((a) => (
-            <AssetRow key={a.asset_name} asset={a} />
-          ))}
-        </View>
-      )}
+      {/* OUT_OF_SCOPE: Asset verdicts (logos, seals, signatures) are not
+          compared in the current scope. This section will reappear when
+          non-textual verification is brought back. */}
 
       <TouchableOpacity style={styles.detailsToggle} onPress={() => setShowDetails((s) => !s)}>
         <Text style={styles.detailsToggleText}>{showDetails ? 'Hide' : 'Show'} technical details</Text>

@@ -1,7 +1,8 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { IconLedger, IconPlus, IconSearch, IconSettings, IconAlert, IconRefresh, IconUpload, IconQr } from './icons';
+import { IconLedger, IconPlus, IconSearch, IconSettings, IconAlert, IconRefresh, IconUpload, IconQr, IconHelp } from './icons';
 import './NavRail.css';
+import { SigningGuideModal } from './SigningGuideModal';
 
 interface Props {
   role: 'admin' | 'issuer' | null;
@@ -9,13 +10,17 @@ interface Props {
 }
 
 export function NavRail({ role, onLogout }: Props) {
+  const [showSigningGuide, setShowSigningGuide] = React.useState(false);
+
   return (
+    <>
+      <SigningGuideModal open={showSigningGuide} onClose={() => setShowSigningGuide(false)} />
     <nav className="nav-rail">
       <div className="nav-brand">
         <div className="nav-seal">TA</div>
         <div>
           <div className="nav-brand-text">Template Studio</div>
-          <div className="nav-brand-sub">TrustAnchor Engine 2</div>
+          <div className="nav-brand-sub">TrustAnchor </div>
         </div>
       </div>
 
@@ -28,7 +33,7 @@ export function NavRail({ role, onLogout }: Props) {
             <IconPlus size={17} /> New Template
           </NavLink>
           <NavLink to="/lookup" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-            <IconSearch size={17} /> Look Up Template
+            <IconSearch size={17} /> My Templates
           </NavLink>
           <div style={{ height: 1, background: 'var(--hairline-dark)', margin: '10px 4px' }} />
           <NavLink to="/admin/applications" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
@@ -54,19 +59,30 @@ export function NavRail({ role, onLogout }: Props) {
           <NavLink to="/issuer/dashboard" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
             <IconLedger size={17} /> Dashboard
           </NavLink>
+          <div style={{ height: 1, background: 'var(--hairline-dark)', margin: '10px 4px' }} />
+          <div style={{ padding: '4px 12px', fontSize: 10, fontWeight: 700, color: 'var(--slate-500)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Templates</div>
           <NavLink to="/templates/new" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
             <IconPlus size={17} /> New Template
           </NavLink>
           <NavLink to="/lookup" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-            <IconSearch size={17} /> Look Up Template
+            <IconSearch size={17} /> My Templates
           </NavLink>
           <div style={{ height: 1, background: 'var(--hairline-dark)', margin: '10px 4px' }} />
+          <div style={{ padding: '4px 12px', fontSize: 10, fontWeight: 700, color: 'var(--slate-500)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Issue</div>
           <NavLink to="/issuer/batch-issuance" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-            <IconUpload size={17} /> Batch Issuance
+            <IconUpload size={17} /> Issue Documents
           </NavLink>
           <NavLink to="/issuer/documents" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
             <IconQr size={17} /> My Documents
           </NavLink>
+          <div style={{ height: 1, background: 'var(--hairline-dark)', margin: '10px 4px' }} />
+          <button
+            className="nav-link"
+            style={{ background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer' }}
+            onClick={() => setShowSigningGuide(true)}
+          >
+            <IconHelp size={17} /> Signing Guide
+          </button>
         </div>
       )}
 
@@ -85,5 +101,6 @@ export function NavRail({ role, onLogout }: Props) {
         )}
       </div>
     </nav>
+    </>
   );
 }

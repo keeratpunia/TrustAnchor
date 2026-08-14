@@ -154,8 +154,8 @@ export default function ResultScreen({ result, onScanAgain, onDeepVerify }: Prop
         <View style={styles.deepVerifySection}>
           <Text style={styles.deepVerifyTitle}>Want to go further?</Text>
           <Text style={styles.deepVerifyBody}>
-            This confirms the document's details are genuine. To also check that the physical paper itself — its
-            printed text, logo, and layout — matches what was issued, take a photo of it.
+            This confirms the document's details are genuine. To also check that the printed text on the
+            physical document matches what was issued, take a photo of it.
           </Text>
           <TouchableOpacity style={styles.deepVerifyButton} onPress={onDeepVerify}>
             <Text style={styles.deepVerifyButtonText}>Photograph Document for Deep Check</Text>

@@ -4,41 +4,36 @@ import { Button, Card } from '../components/ui';
 
 export function RoleChoice() {
   return (
-    <div className="page" style={{ maxWidth: 640, marginTop: 60, textAlign: 'center' }}>
-      <div className="page-eyebrow" style={{ textAlign: 'center' }}>
-        TrustAnchor
-      </div>
-      <h1 className="page-title">Template Studio</h1>
+    <div className="page" style={{ maxWidth: 520, marginTop: 80, textAlign: 'center' }}>
+      <div className="page-eyebrow" style={{ textAlign: 'center' }}>TrustAnchor</div>
+      <h1 className="page-title">Welcome</h1>
       <p className="page-subtitle" style={{ margin: '0 auto 40px', textAlign: 'center' }}>
-        Configure Engine 2 forensic verification for your institution's document templates.
+        Issue and manage tamper-proof credentials for your institution.
       </p>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <Card>
-          <h3 style={{ fontSize: 16, marginBottom: 8 }}>I'm an Issuer</h3>
-          <p style={{ fontSize: 13, color: 'var(--slate-500)', marginBottom: 20, lineHeight: 1.6 }}>
-            Apply for an issuer account, or log in if you already have one.
-          </p>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-            <Link to="/issuer/login" style={{ textDecoration: 'none' }}>
-              <Button variant="primary">Log In</Button>
-            </Link>
-            <Link to="/issuer/signup" style={{ textDecoration: 'none' }}>
-              <Button variant="secondary">Apply</Button>
-            </Link>
-          </div>
-        </Card>
-        <Card>
-          <h3 style={{ fontSize: 16, marginBottom: 8 }}>I'm an Admin</h3>
-          <p style={{ fontSize: 13, color: 'var(--slate-500)', marginBottom: 20, lineHeight: 1.6 }}>
-            Review issuer applications and manage the platform.
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <Link to="/admin/login" style={{ textDecoration: 'none' }}>
-              <Button variant="primary">Log In</Button>
-            </Link>
-          </div>
-        </Card>
-      </div>
+
+      {/* Issuer is the primary path */}
+      <Card style={{ marginBottom: 16, padding: '28px 32px' }}>
+        <h3 style={{ fontSize: 17, marginBottom: 8 }}>Issuer Login</h3>
+        <p style={{ fontSize: 13, color: 'var(--slate-500)', marginBottom: 20, lineHeight: 1.6 }}>
+          Sign in to create templates, issue documents, and manage your credentials.
+        </p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+          <Link to="/issuer/login" style={{ textDecoration: 'none' }}>
+            <Button variant="primary">Log In</Button>
+          </Link>
+          <Link to="/issuer/signup" style={{ textDecoration: 'none' }}>
+            <Button variant="secondary">Register</Button>
+          </Link>
+        </div>
+      </Card>
+
+      {/* Admin is secondary */}
+      <Link
+        to="/admin/login"
+        style={{ fontSize: 12.5, color: 'var(--slate-500)', textDecoration: 'underline', display: 'inline-block', marginTop: 8 }}
+      >
+        Platform administrator? Log in here
+      </Link>
     </div>
   );
 }

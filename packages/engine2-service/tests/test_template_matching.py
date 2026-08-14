@@ -63,7 +63,9 @@ def test_compute_template_match_scores_low_for_wrong_qr_position(aligned_image, 
     )
     result = template_matching.compute_template_match(aligned_image, wrong_qr_position)
     assert result.template_match_score < 0.6
-    assert result.tier == "reject"
+    # Without a skeleton, drift-only evidence is capped at "review" —
+    # never hard-reject — because it's explicitly weaker evidence.
+    assert result.tier == "review"
 
 
 def test_redetect_qr_returns_none_when_no_qr_present():
@@ -79,7 +81,10 @@ def test_compute_template_match_rejects_when_no_qr_detectable():
     result = template_matching.compute_template_match(blank, qr_position)
     assert result.qr_drift_px is None
     assert result.template_match_score == 0.0
-    assert result.tier == "reject"
+    # Without a skeleton, even a total QR-detection failure caps at
+    # "review" — the hard-veto path is reserved for skeleton-corroborated
+    # evidence.
+    assert result.tier == "review"
 
 
 def test_skeleton_correlation_is_near_perfect_for_identical_image(aligned_image):

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { issuerSignup } from '../lib/issuerApi';
 import { ApiError } from '../lib/api';
-import { Button, Card, Field, Input } from '../components/ui';
+import { Button, Card, Field, Input, PasswordInput } from '../components/ui';
 
 export function IssuerSignup() {
   const [institutionName, setInstitutionName] = useState('');
@@ -63,7 +63,7 @@ export function IssuerSignup() {
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </Field>
           <Field label="Password" hint="At least 10 characters">
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} required />
           </Field>
           {error && <div className="field-error" style={{ marginBottom: 14 }}>{error}</div>}
           <Button variant="primary" type="submit" disabled={loading}>

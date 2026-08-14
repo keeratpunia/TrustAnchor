@@ -123,6 +123,7 @@ export interface IssuerAccount {
   status: IssuerAccountStatus;
   issuerId: string | null;
   publicKeyHex: string | null;
+  pendingPublicKeyHex?: string | null;
   keySource: 'yubikey' | 'software_test_key' | null;
   rejectionReason?: string | null;
   suspensionReason?: string | null;

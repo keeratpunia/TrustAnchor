@@ -112,6 +112,23 @@ def _normalize_text(text: str) -> str:
     return cleaned.strip()
 
 
+# Visually identical glyphs in serif/sans-serif fonts at typical print
+# sizes — Tesseract literally cannot distinguish these from each other
+# in many typefaces.  Unlike _DIGIT_CONFUSIONS (which is aggressive and
+# intentionally text-unsafe), this table only covers the one truly
+# indistinguishable group: l / I / 1 / |.  Applied as a FALLBACK after
+# the primary comparison fails, never as the first pass.
+_TEXT_GLYPH_CANONICAL = str.maketrans("l1|", "iii")
+
+
+def _deconfuse_text(text: str) -> str:
+    """Canonicalize l/I/1/| to 'i' — applied only AFTER lowercasing and
+    only as a retry when the primary comparison didn't produce an exact
+    match.  This keeps 'lake' as 'lake' in the primary pass (correct)
+    while letting 'lyer' match 'iyer' in the fallback (also correct)."""
+    return text.translate(_TEXT_GLYPH_CANONICAL)
+
+
 def _similarity(a: str, b: str) -> float:
     if not a and not b:
         return 1.0
@@ -132,6 +149,55 @@ def _tier_from_score(score: float) -> str:
     if score >= 0.6:
         return "review"
     return "reject"
+
+
+def _extract_best_substring(ocr_normalized: str, expected_normalized: str) -> tuple[str, bool]:
+    """
+    When the OCR crop is wider than the value it targets, Tesseract reads
+    surrounding label text too (e.g. "t simran kaur so" instead of "simran
+    kaur").  Rather than demanding pixel-perfect zone drawing from issuers,
+    this function checks whether the expected value appears as a contiguous
+    substring of the OCR output and, if so, returns just that substring.
+
+    This is SAFE because the expected value is Engine-1-AUTHENTICATED — a
+    forger cannot control what substring we search for.  We are not
+    accepting "any substring that matches" from untrusted OCR; we are
+    asking "does the signed value appear inside what was read?"
+
+    Returns (best_text, was_trimmed).
+    """
+    if not ocr_normalized or not expected_normalized:
+        return ocr_normalized, False
+
+    # Direct containment — the ideal case
+    if expected_normalized in ocr_normalized:
+        return expected_normalized, True
+
+    # Fuzzy substring: slide a window the size of the expected value across
+    # the OCR text and find the best-matching window.  This handles minor
+    # OCR errors within the substring (e.g. "Sirnran" instead of "Simran").
+    exp_len = len(expected_normalized)
+    if len(ocr_normalized) <= exp_len:
+        return ocr_normalized, False
+
+    best_window = ocr_normalized
+    best_score = _similarity(ocr_normalized, expected_normalized)
+
+    for start in range(len(ocr_normalized) - exp_len + 1):
+        window = ocr_normalized[start:start + exp_len]
+        score = _similarity(window, expected_normalized)
+        if score > best_score:
+            best_score = score
+            best_window = window
+
+    # Only use the windowed result if it's meaningfully better than the
+    # full string comparison — otherwise the full string was already the
+    # best representation.
+    full_score = _similarity(ocr_normalized, expected_normalized)
+    if best_score > full_score + 0.05:
+        return best_window, True
+
+    return ocr_normalized, False
 
 
 def compare_field(
@@ -189,16 +255,53 @@ def compare_field(
         normalized_extracted = _normalize_text(extracted_text)
         normalized_expected = _normalize_text(expected_text)
 
-    exact_match = normalized_extracted == normalized_expected
-    similarity = 1.0 if exact_match else _similarity(normalized_extracted, normalized_expected)
+    # ── Substring extraction: handle zones wider than the target value ──
+    # If OCR read more text than expected (surrounding labels captured by a
+    # wide bounding box), try to find the expected value as a substring
+    # within the OCR output before doing the full-string comparison.
+    trimmed_extracted, was_trimmed = _extract_best_substring(
+        normalized_extracted, normalized_expected
+    )
+
+    exact_match = trimmed_extracted == normalized_expected
+    similarity = 1.0 if exact_match else _similarity(trimmed_extracted, normalized_expected)
+
+    # ── Glyph-deconfusion fallback (text fields only) ──────────────────
+    # If the primary comparison isn't an exact match and the field is text,
+    # retry with l/I/1/| canonicalized to 'i'.  This catches the single
+    # most common Tesseract misread in serif-printed names (e.g. "lyer"
+    # for "Iyer") without applying the aggressive digit-confusion table
+    # that would be unsafe for text.
+    deconfused = False
+    if not exact_match and field_type == "text":
+        dc_extracted = _deconfuse_text(trimmed_extracted)
+        dc_expected = _deconfuse_text(normalized_expected)
+        dc_exact = dc_extracted == dc_expected
+        dc_sim = 1.0 if dc_exact else _similarity(dc_extracted, dc_expected)
+        if dc_sim > similarity:
+            trimmed_extracted = dc_extracted
+            normalized_expected = dc_expected
+            exact_match = dc_exact
+            similarity = dc_sim
+            deconfused = True
+
     tier = _tier_from_score(similarity)
 
-    if exact_match:
+    if exact_match and was_trimmed:
+        reason = (
+            f"Authenticated value found within OCR output ({field_type} field). "
+            f"Full OCR read '{normalized_extracted}', matched substring "
+            f"'{trimmed_extracted}'."
+        )
+    elif exact_match:
         reason = f"Normalized values match exactly ({field_type} field)."
     else:
+        display_extracted = trimmed_extracted if was_trimmed else normalized_extracted
         reason = (
             f"Normalized values differ ({field_type} field): "
-            f"OCR read '{normalized_extracted}', authenticated value is "
+            f"OCR read '{display_extracted}'"
+            f"{' (trimmed from wider crop)' if was_trimmed else ''}"
+            f", authenticated value is "
             f"'{normalized_expected}' (similarity {similarity:.3f})."
         )
 
@@ -206,7 +309,7 @@ def compare_field(
         field_name=field_name,
         extracted_text=extracted_text,
         expected_text=expected_text,
-        normalized_extracted=normalized_extracted,
+        normalized_extracted=trimmed_extracted if was_trimmed else normalized_extracted,
         normalized_expected=normalized_expected,
         exact_match=exact_match,
         similarity=similarity,

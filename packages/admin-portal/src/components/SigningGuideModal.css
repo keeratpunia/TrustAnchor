@@ -1,0 +1,254 @@
+/* ---- Signing Guide Modal ---- */
+.sgm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 17, 32, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 900;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 40px 20px;
+  overflow-y: auto;
+}
+
+.sgm-modal {
+  background: var(--parchment-050);
+  border-radius: var(--radius-lg);
+  max-width: 680px;
+  width: 100%;
+  padding: 36px 40px 48px;
+  position: relative;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+  animation: sgm-in 0.2s ease-out;
+}
+
+@keyframes sgm-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.sgm-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: none;
+  border: none;
+  color: var(--slate-500);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  transition: background 0.12s, color 0.12s;
+}
+.sgm-close:hover {
+  background: var(--slate-100);
+  color: var(--ink-900);
+}
+
+.sgm-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.sgm-icon {
+  font-size: 36px;
+  flex-shrink: 0;
+}
+
+.sgm-title {
+  font-size: 22px;
+  line-height: 1.3;
+  color: var(--ink-900);
+}
+
+.sgm-body {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--ink-900);
+}
+
+.sgm-section {
+  margin-bottom: 28px;
+}
+.sgm-section:last-child {
+  margin-bottom: 0;
+}
+
+.sgm-section h3 {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: var(--ink-900);
+}
+
+.sgm-section p {
+  margin-bottom: 8px;
+  color: var(--ink-600);
+}
+
+.sgm-section ul {
+  margin: 8px 0 12px 0;
+  padding-left: 20px;
+  color: var(--ink-600);
+}
+.sgm-section li {
+  margin-bottom: 6px;
+}
+
+.sgm-section code {
+  background: var(--slate-100);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12.5px;
+  font-family: var(--font-mono);
+}
+
+.sgm-code {
+  display: block;
+  background: var(--ink-900) !important;
+  color: #e2e8f0 !important;
+  padding: 12px 16px !important;
+  border-radius: 8px !important;
+  font-size: 12px !important;
+  font-family: var(--font-mono) !important;
+  margin: 8px 0 !important;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.6;
+}
+
+.sgm-step {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+.sgm-step:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.sgm-step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--brass-500);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.sgm-step strong {
+  font-size: 14px;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.sgm-step p {
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.sgm-step ul {
+  font-size: 13px;
+}
+
+.sgm-faq {
+  margin-bottom: 14px;
+  padding: 12px 16px;
+  background: var(--parchment-100);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+}
+.sgm-faq strong {
+  font-size: 13px;
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink-900);
+}
+.sgm-faq p {
+  font-size: 12.5px;
+  margin: 0;
+  color: var(--slate-500);
+}
+
+/* Callout box */
+.sgm-callout {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #92400e;
+  margin-top: 10px;
+}
+.sgm-callout strong {
+  display: block;
+  margin-bottom: 2px;
+  color: #78350f;
+}
+
+/* Checklist */
+.sgm-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.sgm-check-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.sgm-check-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--slate-200);
+  color: var(--ink-900);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.sgm-check-item strong {
+  font-size: 13.5px;
+  display: block;
+  margin-bottom: 2px;
+}
+.sgm-check-item p {
+  font-size: 12.5px;
+  color: var(--slate-500);
+  margin: 0;
+}
+
+.sgm-hint {
+  font-size: 12px !important;
+  color: var(--slate-500) !important;
+  margin-top: 4px !important;
+}
+
+/* Sub-steps inside a numbered step */
+.sgm-substeps {
+  margin: 8px 0 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--ink-600);
+}
+.sgm-substeps li {
+  margin-bottom: 4px;
+}

@@ -78,6 +78,7 @@ export const PLATFORM_PUBLIC_KEY_HEX = 'ae4aff432dce61e90c42ad1d5a8a6dbfe901dc86
  */
 export const REQUEST_TIMEOUT_MS = 8000;
 
+
 /**
  * How long POST /v2/verify/:docId (Engine 2's forensic pipeline: image
  * alignment, multilingual OCR, template/asset matching) is allowed to
@@ -87,7 +88,7 @@ export const REQUEST_TIMEOUT_MS = 8000;
  * manifest/credential GETs, and a large document photo also simply takes
  * longer to upload than a QR payload does.
  */
-export const ENGINE2_REQUEST_TIMEOUT_MS = 30000;
+export const ENGINE2_REQUEST_TIMEOUT_MS = 60000;
 
 /** AsyncStorage key used to persist the highest Trust Manifest version ever seen (rollback defense, Frozen Spec §14 step 3). */
 export const MANIFEST_VERSION_STORAGE_KEY = 'trustanchor_highest_manifest_version';

@@ -1,5 +1,6 @@
 /**
- * pdfRender.ts — renders one printable credential PDF from a template's
+ *  D:\JUNE2026TESTING\packages\backend\src\services\pdfRender.ts
+ *  pdfRender.ts — renders one printable credential PDF from a template's
  * own declared layout.
  * ============================================================================
  * Deliberately safe to run on the networked backend: nothing here touches
