@@ -1,73 +1,95 @@
-# TrustAnchor Engine 1
+# TrustAnchor
 
-A production-quality implementation of **Engine 1** — the deterministic cryptographic
-verification layer for tamper-evident physical documents — built exactly to the frozen
-architecture specification.
+**A tamper-evident credential issuance and verification platform.**
 
-> **Scope:** This implements ONLY Engine 1 (cryptographic verification). Engine 2 (visual/OCR
-> document forensics) is explicitly out of scope, as specified.
+TrustAnchor lets an institution (a university, a certifying body, etc.) issue physical or
+printed documents — degrees, certificates, ID cards — that carry a QR code an offline-signed
+Ed25519 signature. Anyone can then scan that QR with the verifier app and get a
+cryptographically-grounded answer to "is this document genuine, unaltered, and not revoked?" —
+without trusting the network, the server, or anything else in between.
 
-## The one-sentence architecture
+The platform is built around a hard architectural rule: **the online server never holds a
+private signing key, in any environment, at any time.** Every signature is produced offline,
+ahead of time, by a dedicated CLI tool running on an air-gapped machine. The server's job is
+reduced to pure storage and serving; a compromised server can, at worst, cause denial of service
+or serve stale data — it can never forge a valid credential.
 
-A thin QR code (~150 bytes) carries an Ed25519 signature over a document's content hash. The
-Verification Server holds **no signing key of any kind, in any environment, at any time** — every
-signature was produced offline, ahead of time, by a dedicated CLI tool. The server is pure storage
-and serving; the verifier app trusts nothing it receives from the network without independently
-checking a signature against a hardcoded public key.
+On top of that cryptographic core (**Engine 1**), TrustAnchor adds a second, independent layer
+(**Engine 2**): visual/OCR document forensics that checks whether the *physical* document in
+someone's hand actually matches the data Engine 1 already authenticated — catching photocopies,
+edited scans, and mismatched printouts that a pure signature check can't.
 
-## Why this design — read this before touching the crypto code
-
-The authoritative design rationale for every decision here — what's signed, what's hashed, why the
-runtime holds no keys, why revocation lives inside the manifest rather than a separate artifact —
-is documented inline as comments in the source, especially:
-
-- `packages/shared/src/canonicalCbor.ts` — why canonical CBOR, rule by rule
-- `packages/backend/src/routes/revocation.ts` — why `GET /revocation` is a derived convenience
-  view and NOT part of the actual verification algorithm
-- `packages/verifier-app/src/engine1/engine1.ts` — the complete verification algorithm, step by
-  step, each step referencing the exact attack it defeats
-- `packages/backend/src/middleware/asyncHandler.ts` — a real bug this project's own test suite
-  caught (Express 4 doesn't auto-forward async errors) and the fix
-
-## Project structure
+## How it works, in one diagram
 
 ```
-trustanchor-engine1/
-├── packages/
-│   ├── shared/              # Canonical CBOR encoder, SHA-256, payload codecs, types
-│   │                         #   (used by backend AND offline-signer)
-│   ├── offline-signer/      # CLI: keygen, sign-credential, sign-manifest, generate-qr
-│   │                         #   NEVER run this on a networked machine
-│   ├── backend/             # Express + TypeScript + Prisma + PostgreSQL
-│   │                         #   Storage & serving ONLY — holds no signing key
-│   └── verifier-app/        # Expo + React Native + TypeScript
-│                             #   Scans QR, runs Engine 1, shows the verdict
-├── samples/                  # Real generated demo data (issuer key, signed
-│                              #   credential, signed manifest, QR PNG)
-├── docker-compose.yml
-└── package.json               # npm workspaces root
+                    ┌──────────────────────┐
+                    │   offline-signer      │   air-gapped machine
+                    │   (CLI, holds keys)   │   — the ONLY place private
+                    └──────────┬───────────┘     keys ever exist
+                               │ signed credential / manifest
+                               ▼
+   ┌────────────────┐   ┌─────────────────┐   ┌──────────────────────┐
+   │  admin-portal   │──▶│     backend      │◀──│   engine2-service     │
+   │ (issuer/admin   │   │ (Express + Prisma │   │ (FastAPI + OpenCV +   │
+   │  web console)   │   │  + PostgreSQL)    │   │  Tesseract OCR)       │
+   └────────────────┘   │  storage & serving│   └──────────────────────┘
+                         │  — holds NO keys  │
+                         └────────┬─────────┘
+                                  │ public REST APIs
+                                  ▼
+                         ┌──────────────────┐
+                         │   verifier-app     │   scans the QR, runs the
+                         │ (Expo / React      │   full verification algorithm
+                         │  Native, on-device)│   on-device, trusts nothing
+                         └──────────────────┘   it can't verify itself
 ```
 
-## Quick start
+## Packages
 
-### 1. Install dependencies
+This is an npm-workspaces monorepo. Each package has its own detailed README — start here for
+the big picture, then drill into the one you're touching.
+
+| Package | Stack | Purpose |
+|---|---|---|
+| [`packages/shared`](packages/shared) | TypeScript | Canonical CBOR encoding, SHA-256 helpers, and the wire-format types shared byte-for-byte between the offline signer and the backend. |
+| [`packages/offline-signer`](packages/offline-signer) | TypeScript / Node CLI | Generates Ed25519 keypairs and signs credentials & trust manifests. Designed to run on an air-gapped machine; can also be packaged as a standalone `.exe`/binary via `pkg`. |
+| [`packages/backend`](packages/backend) | Express, TypeScript, Prisma, PostgreSQL | The Verification Server: stores credentials, assets, and the signed trust manifest; exposes REST APIs for verification, issuance, and the admin/issuer portal. Holds no signing key. |
+| [`packages/engine2-service`](packages/engine2-service) | Python, FastAPI, OpenCV, Tesseract OCR | Document forensics microservice — perspective correction, multilingual OCR, template matching, asset verification, and confidence scoring for the physical document itself. |
+| [`packages/admin-portal`](packages/admin-portal) | React, TypeScript, Vite | Web console for issuers and admins: document templates, OCR zone/asset configuration, batch issuance, key rotation, audit log, revocation requests. |
+| [`packages/verifier-app`](packages/verifier-app) | Expo, React Native, TypeScript | Mobile app that scans a document's QR code and independently re-runs the full Engine 1 cryptographic verification on-device. |
+
+`samples/` at the repo root ships real, already-generated demo data (an issuer keypair, a signed
+credential, a signed manifest, and a scannable QR PNG) so you can try end-to-end verification
+without generating your own keys first.
+
+## Getting started
+
+### Prerequisites
+
+- Node.js ≥ 18
+- Docker (for local PostgreSQL), or a PostgreSQL 16 instance of your own
+- Python 3.10+ with `pip` (only if you're running `engine2-service`)
+- Tesseract OCR with Hindi + Punjabi language packs (only for `engine2-service` — see its
+  [README](packages/engine2-service/README.md) for OS-specific install steps)
+
+### 1. Install JS/TS dependencies
 
 ```bash
 npm install
 ```
 
-This installs all workspace packages (`shared`, `offline-signer`, `backend`) from the root. The
-`verifier-app` is an Expo project and is installed separately (Expo/Metro doesn't play well with
-npm workspaces):
+This installs the `shared`, `offline-signer`, and `backend` workspaces from the root. The Expo
+and Vite apps are installed separately since they don't play well with npm workspaces:
 
 ```bash
 cd packages/verifier-app && npm install --legacy-peer-deps
+cd ../admin-portal && npm install
 ```
 
 ### 2. Start PostgreSQL
 
 ```bash
-docker compose up -d postgres
+npm run db:up
 ```
 
 ### 3. Configure the backend
@@ -77,125 +99,113 @@ cd packages/backend
 cp .env.example .env
 ```
 
-Edit `.env` if needed — the defaults work with the `docker-compose.yml` Postgres instance.
+The defaults match `docker-compose.yml`'s Postgres instance. See [Environment
+variables](#environment-variables) below for what each setting does.
 
-### 4. Run migrations and generate the Prisma client
+### 4. Generate the Prisma client and run migrations
 
 ```bash
 npm run generate --workspace=packages/backend
-npm run migrate --workspace=packages/backend
+npm run backend:migrate
 ```
 
-> **Note:** this requires internet access to download Prisma's query engine binary (a one-time
-> download, cached afterward). This is a normal requirement on any real developer machine.
-
-### 5. Try the sample data, or generate your own
-
-This repo ships **real, already-generated** sample data in `/samples` — a genuine issuer keypair,
-a signed credential, a signed trust manifest, and a scannable QR PNG, all produced by actually
-running the offline-signer CLI. Seed the database with them:
+### 5. Seed sample data and start the backend
 
 ```bash
-npm run seed --workspace=packages/backend
+npm run backend:seed     # loads the bundled /samples data
+npm run backend:dev      # starts on http://localhost:4000
 ```
 
-To generate your **own** fresh demo data instead (recommended once you're past initial testing):
+Verify it's up: `curl http://localhost:4000/health`
+
+### 6. (Optional) Start Engine 2
 
 ```bash
-cd packages/offline-signer
-
-# Generate an issuer key and a platform trust key
-npx ts-node src/cli.ts keygen --label "My University" --out ../../samples/issuer-key.json
-npx ts-node src/cli.ts keygen --label "My Platform" --out ../../samples/platform-key.json
-
-# Edit samples/sample-credential-unsigned.json and samples/sample-manifest-unsigned.json
-# with your own data, then:
-
-npx ts-node src/cli.ts sign-credential \
-  --payload ../../samples/sample-credential-unsigned.json \
-  --key ../../samples/issuer-key.json \
-  --out ../../samples/sample-credential-signed.json
-
-npx ts-node src/cli.ts sign-manifest \
-  --manifest ../../samples/sample-manifest-unsigned.json \
-  --key ../../samples/platform-key.json \
-  --out ../../samples/sample-manifest-signed.json
-
-npx ts-node src/cli.ts generate-qr \
-  --signed ../../samples/sample-credential-signed.json \
-  --out ../../samples/sample-qr.png \
-  --terminal
+cd packages/engine2-service
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
 ```
 
-**If you generate your own platform key**, update
-`packages/verifier-app/src/config.ts`'s `PLATFORM_PUBLIC_KEY_HEX` to match — the app will reject
-every manifest otherwise (correctly — that's the whole point).
-
-### 6. Start the backend
+### 7. Start the apps
 
 ```bash
-npm run dev --workspace=packages/backend
+# Verifier (mobile)
+cd packages/verifier-app && npm start
+
+# Admin / issuer portal (web)
+cd packages/admin-portal && npm run dev
 ```
 
-Verify it's running: `curl http://localhost:4000/health`
+Scan `samples/sample-qr.png` with the verifier app (Expo Go or an emulator camera pointed at the
+image on a second screen) to see a full AUTHENTIC verdict against the bundled sample data.
 
-### 7. Start the verifier app
+## Environment variables
+
+Set in `packages/backend/.env` (see `.env.example` for the authoritative, commented version):
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | Prisma-format PostgreSQL connection string |
+| `PORT` | HTTP port the backend listens on (default `4000`) |
+| `CORS_ORIGIN` | Allowed CORS origin(s); `*` for local dev only |
+| `LOG_LEVEL` | `debug` \| `info` \| `warn` \| `error` |
+| `PLATFORM_PUBLIC_KEY_HEX` | The platform trust key's **public** half — used for an optional sanity check on manifest ingestion. Public keys are safe to share. |
+| `INGESTION_API_KEY` | Shared secret gating `POST /manifest`, `/credential`, `/asset` — ordinary operational access control, not a cryptographic boundary |
+| `ENGINE2_SERVICE_URL` | Base URL of the Python `engine2-service`, used only by the Engine 2 verify route |
+| `JWT_SECRET` | Signs ordinary portal login sessions for issuers/admins — **not** a credential-signing key |
+| `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | Bootstrap admin account created by `npm run backend:seed` |
+
+**By design, there is no private signing key anywhere in this file.** Every private key lives
+exclusively on an offline machine running `@trustanchor/offline-signer`.
+
+## Testing
 
 ```bash
-cd packages/verifier-app
-npm start
-```
-
-Scan `samples/sample-qr.png` (displayed on a second screen, or printed) with the Expo Go app on
-your phone, or with an emulator's camera pointed at a monitor showing the PNG.
-
-## Running tests
-
-```bash
-# Crypto core + backend route logic (66 tests)
+# Backend: crypto core + full HTTP route behavior (mocked Prisma layer, no live DB needed)
 npm run test --workspace=packages/backend
 
-# Just the pure crypto unit tests
-npx jest tests/unit --workspace=packages/backend
+# Shared crypto primitives
+npm run test --workspace=packages/shared
+
+# Engine 2 pipeline (regenerates synthetic test fixtures first)
+cd packages/engine2-service
+python tests/generate_test_document.py
+python -m pytest tests/ -v
 ```
 
-The backend test suite mocks the Prisma data-access layer (see
-`packages/backend/tests/integration/fakePrisma.ts` for why — and why this doesn't compromise test
-validity) so the full HTTP route behavior, input validation, and cryptographic sanity checks are
-exercised without requiring a live database connection during CI runs. The underlying SQL schema
-was separately validated by actually running the migration against a real PostgreSQL 16 instance.
+## API surface
 
-## The four required APIs
+The backend exposes two API generations:
 
-| Endpoint | Purpose |
-|---|---|
-| `GET /manifest` | Fetch the current offline-signed Trust Manifest |
-| `GET /credential/:docId` | Fetch a credential's raw payload by document ID |
-| `GET /asset/:hash` | Fetch a raw asset by content hash (reserved for Engine 2; not called by Engine 1) |
-| `GET /revocation` | **Convenience, unsigned, derived view only** — see the loud comment in `routes/revocation.ts` before using this for anything security-relevant |
+- **Engine 1 core** (`GET /manifest`, `GET /credential/:docId`, `GET /asset/:hash`,
+  `GET /revocation`) — the minimal, frozen set of endpoints the verifier app needs for
+  cryptographic verification. Full schemas in
+  [`packages/backend/openapi.yaml`](packages/backend/openapi.yaml).
+- **v2 / platform APIs** (`/v2/templates`, `/v2/verify`, `/v2/issuer-documents`,
+  `/v2/credential-batch`, plus `/auth/*` and `/admin/*`) — issuer/admin authentication, document
+  template management, batch issuance, Engine 2 verification, key rotation, revocation requests,
+  and audit logging that power the admin portal. These are purely additive and never touched by
+  the verifier app's core verification path.
 
-Full request/response schemas: [`packages/backend/openapi.yaml`](./packages/backend/openapi.yaml)
+## Security model
 
-## Security model, in one paragraph
+Every trusted object in the system — the Trust Manifest and every issued credential — is either
+independently signed by an offline-held Ed25519 key (the manifest) or self-authenticating via a
+content hash embedded in a QR code that only an offline key could have signed (credentials). The
+verifier app trusts nothing it receives from the network without independently checking a
+signature against a hardcoded public key on-device.
 
-The runtime server, the database, the network, and even a fully reverse-engineered copy of the
-verifier app grant an attacker **zero forgery capability**. Every trusted object — the Trust
-Manifest and every credential — is either independently signed by an offline-held Ed25519 key
-(manifest) or self-authenticating via a hash embedded in a QR that only an offline key could have
-signed (credential). A compromised runtime can, at absolute worst, cause denial of service or serve
-stale data — never a false ACCEPT. See the inline comments throughout `packages/verifier-app/src/engine1/engine1.ts`
-for exactly which attack each of the eleven verification steps defeats.
+A compromised runtime server, database, or network grants an attacker **zero forgery
+capability** — at absolute worst, denial of service or stale data. See the inline documentation
+in `packages/verifier-app/src/engine1/engine1.ts` for exactly which attack each verification
+step defeats.
 
-## What's NOT included (by design)
+> ⚠️ **Key hygiene:** files matching `*.key.json` are gitignored because they hold
+> `privateKeyHex`. If you generate your own keys with `offline-signer`, keep the output **outside**
+> this repo (or under a path that matches that pattern) — the only private keys that belong in
+> version control are the clearly-labeled, public demo keys under `samples/`.
 
-- **Engine 2** (visual/OCR document forensics) — explicitly out of scope for this build.
-- **A hardware offline signer** — the offline-signer CLI runs as ordinary Node.js/TypeScript for
-  this implementation. In a real deployment, run it on an air-gapped machine, ideally with the
-  private key material held on a hardware token (e.g. a YubiKey via PKCS#11) rather than a plain
-  JSON file — the CLI's key-handling code is structured so that swapping the signing step for a
-  hardware call is a small, isolated change (see `offline-signer/src/signCredential.ts` and
-  `signManifest.ts`).
-- **Stolen-key mass-forgery containment** (an issuance log / `valid_docs` allow-list) — this
-  defends against a threat (issuer private key compromise) explicitly excluded from this build's
-  threat model. See the frozen specification for why this is a deliberate scope boundary, not an
-  oversight.
+## License
+
+`UNLICENSED` — private/internal project (see `package.json`). Update this section if you decide
+to open-source the project.
