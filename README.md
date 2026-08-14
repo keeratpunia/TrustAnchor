@@ -207,5 +207,5 @@ step defeats.
 
 ## License
 
-`UNLICENSED` — private/internal project (see `package.json`). Update this section if you decide
+`UNLICENSED` — private/internal project (see `package.json`). Will Update this section if I decide
 to open-source the project.
